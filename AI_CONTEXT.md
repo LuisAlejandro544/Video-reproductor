@@ -164,6 +164,36 @@ Este archivo proporciona el contexto técnico, arquitectónico y operativo neces
   - Deslizador de ajuste de nitidez RCAS (0% a 100%, 75% recomendado por AMD para video).
   - Preset instantáneo "Super-Resolución FSR" en `VideoEqualizerState`.
 
+### 14. Arquitectura Modular de Pantallas Independientes de Herramientas
+- **Motivación y Desacoplamiento:**
+  - En lugar de concentrar todas las configuraciones en un único menú sobrecargado, cada herramienta cuenta con su propia pantalla o panel modular exclusivo e independiente.
+  - Esto evita la fatiga visual en pantallas móviles, permite enfocar al usuario en una sola tarea (ecualización, escala, subtítulos, motor de audio) y deja la arquitectura preparada para admitir nuevas herramientas en el futuro de forma desacoplada.
+- **Componentes Implementados:**
+  - `PlayerToolsSideSheet`: Panel lateral derecho elegante con animación de deslizamiento (`slideInHorizontally`), accesible desde el botón de herramientas en las barras superior e inferior. Presenta accesos directos con iconos y descripciones contextuales para cada herramienta disponible.
+  - `VideoEqualizerSheet`: Pantalla modal exclusiva para calibración de color (brillo, contraste, saturación, gamma), nitidez por hardware, modo descanso visual y presets cromáticos.
+  - `PillarboxBlurSheet`: Pantalla modal exclusiva para habilitar y ajustar el desenfoque de fondo en videos verticales (radio Gaussiano y atenuación de brillo).
+  - `FsrUpscaleSheet`: Pantalla modal exclusiva para Super-Resolución AMD FidelityFX™ FSR 1.0 (activación de EASU y ajuste fino de afilado RCAS).
+  - `AspectRatioSheet`: Pantalla modal exclusiva para cambiar la escala geométrica (Ajustar / FIT, Zoom / ZOOM, Llenar / FILL) con indicadores visuales claros.
+  - `AudioEngineSheet`: Pantalla modal exclusiva para alternar entre el motor nativo de ultra baja latencia Google Oboe en C++ y Android Media3 AudioTrack.
+  - `PlaybackSpeedSheet`: Pantalla modal de control de velocidad (0.25x a 2.0x) con Sonic Pitch activo.
+  - `SubtitlesBottomSheet`: Panel modal de gestión de subtítulos internos (MKV/MP4) y externos (.srt/.vtt) con ajuste de tamaño.
+  - `SunModeSheet`: Pantalla modal exclusiva para Modo Sol Extremo y Accesibilidad de Alto Contraste en GPU.
+  - `VoiceNightAudioSheet`: Pantalla modal exclusiva para Audio Inteligente DSP (Realce de Diálogos y Compresor Dinámico Nocturno en C++).
+  - **Bloqueo de Controles (`isControlsLocked`):** Opción en el panel lateral para bloquear los gestos táctiles del reproductor evitando toques accidentales durante la visualización, mostrando un botón flotante semitransparente con animación de pulso para desbloquear rápidamente con un solo toque.
 
+### 15. Modo Sol Extremo / Accesibilidad de Alto Contraste (OpenGL ES Shader)
+- **Desafío:** Al reproducir videos al aire libre o bajo luz solar directa, las sombras y detalles oscuros se pierden por los reflejos, forzando al usuario a elevar el brillo al 100% (lo cual sobrecalienta el terminal y drena la batería rápidamente).
+- **Solución Técnica:** Se implementa un shader de mapeo tonal adaptativo que eleva dinámicamente las luminancias oscuras mediante una curva de transferencia logarítmica sin quemar las altas luces (`color = mix(color, pow(color, vec3(0.55)) * 1.35 + 0.08, uSunMode)`).
+- Ofrece perfiles dedicados para legibilidad extrema y soporte de accesibilidad para usuarios con baja agudeza visual.
 
+### 16. Procesamiento de Audio DSP en Tiempo Real con Google Oboe (C++)
+- **Filtro Peaking Vocal (1.5 kHz a 3.5 kHz):** Realce paramétrico en C++ con punto flotante sobre las frecuencias donde se concentra el formante del habla humana. Permite entender los diálogos con claridad sin tener que subir el volumen general de la película.
+- **Compresor de Rango Dinámico (DRC / Night Mode):** Seguidor de envolvente en C++ que detecta incrementos súbitos de amplitud (explosiones, golpes, disparos) y aplica reducción de ganancia proporcional en microsegundos, al tiempo que eleva pasajes susurrados.
+- Todo el procesamiento ocurre en el hilo de audio de Google Oboe con 0 ms de latencia agregada y protección concurrente con `std::mutex`.
 
+### 17. Transmisión a TV (Casting y Pantalla Compartida) con Fidelidad de Calibración
+- **Pregunta Técnica Clave:** ¿Cómo asegurar que los efectos de color (OpenGL ES) y audio (Oboe DSP) suenen y se vean exactamente iguales en un televisor?
+- **Ruta de Implementación:**
+  1. **Salida por Cable HDMI / DisplayPort (USB Type-C con DisplayManager / Presentation):** El teléfono renderiza la superficie EGL y emite el audio Oboe directamente sobre el `Display` secundario conectado, logrando paridad 100% exacta sin compresión.
+  2. **Duplicación Inalámbrica (Miracast / Wi-Fi Direct Display):** El codificador por hardware del sistema captura el framebuffer compuesto de la GPU y el flujo de audio mezclado de Android, preservando los efectos de shader y compresión.
+  3. **Streaming Universal Autónomo (Sin Google Cast dependiente de GMS):** Generación de un servidor local HTTP/RTSP en el dispositivo para que cualquier Smart TV (LG webOS, Samsung Tizen, Android TV, Fire TV, Roku) reproduzca el contenido manteniendo total independencia de Google Play Services.

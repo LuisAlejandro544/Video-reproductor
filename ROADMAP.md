@@ -58,7 +58,25 @@ Este documento detalla las fases de desarrollo planificadas para convertir a **N
   - **AMD FidelityFX Super Resolution 1.0 (FSR 1.0):** Reconstrucción espacial adaptativa (EASU) con detección de aristas por gradiente y afilado dependiente del contraste local (RCAS) en shader GLSL para escalado y nitidez de videos de baja resolución.
 - [x] Presets preconfigurados instantáneos: *Normal*, *Super-Resolución FSR*, *Descanso Visual*, *Vívido*, *Cine*, *Nocturno*, *Alto Contraste* y *Blanco y Negro*.
 - [x] Control de velocidad de reproducción (hasta 2.0x) con *Sonic Pitch Preservation* activo sin distorsión de audio.
-- [x] Componentes modulares Jetpack Compose: `OpenGLVideoSurface`, `VideoEqualizerSheet` y `PlaybackSpeedSheet`.
+- [x] **Arquitectura Modular de Herramientas del Reproductor (Pantallas Independientes):**
+  - Panel lateral derecho interactivo (`PlayerToolsSideSheet`) para navegación limpia y desacoplada entre herramientas.
+  - Pantallas y hojas exclusivas e independientes para cada funcionalidad:
+    - `VideoEqualizerSheet`: Ajuste dedicado de brillo, contraste, saturación, gamma, nitidez y presets de color.
+    - `SunModeSheet`: Pantalla independiente de compensación para exteriores bajo luz solar intensa y perfiles de alto contraste para accesibilidad visual.
+    - `PillarboxBlurSheet`: Control exclusivo para desenfoque y relleno de barras laterales en videos verticales.
+    - `FsrUpscaleSheet`: Pantalla dedicada de Super Resolución AMD FidelityFX FSR 1.0 (EASU + RCAS).
+    - `VoiceNightAudioSheet`: Pantalla dedicada de Audio Inteligente DSP (Modo Voces Claras y Compresor Dinámico Nocturno en C++).
+    - `AspectRatioSheet`: Selección de modo de pantalla geométrico (Ajustar, Zoom, Llenar).
+    - `AudioEngineSheet`: Conmutador de motor de audio (Oboe C++ vs Media3 AudioTrack).
+    - `PlaybackSpeedSheet`: Selector de velocidad de reproducción (hasta 2.0x).
+    - `SubtitlesBottomSheet`: Gestión de subtítulos internos y externos con selector tipográfico.
+    - Modo de Bloqueo de Pantalla (`Lock`): Desactiva toques y gestos accidentales con botón flotante de desbloqueo.
+- [x] **Procesamiento de Audio DSP en Tiempo Real con Google Oboe en C++:**
+  - **Filtro Peaking Vocal (1.5 kHz a 3.5 kHz):** Realce inteligente de diálogos y frecuencias fonéticas clave.
+  - **Compresor de Rango Dinámico (DRC):** Normalización de picos para cine nocturno (suaviza explosiones y levanta susurros).
+- [x] **Modo Sol Extremo / Accesibilidad de Alto Contraste en Shader OpenGL ES:**
+  - Elevación no lineal de tonos oscuros y rango dinámico visible para legibilidad perfecta bajo luz solar directa o personas con visión reducida.
+- [x] Componentes modulares Jetpack Compose: `OpenGLVideoSurface`, `VideoEqualizerSheet`, `SunModeSheet`, `VoiceNightAudioSheet`, `PillarboxBlurSheet`, `FsrUpscaleSheet`, `AspectRatioSheet`, `AudioEngineSheet` y `PlaybackSpeedSheet`.
 
 ---
 
@@ -98,7 +116,17 @@ Este documento detalla las fases de desarrollo planificadas para convertir a **N
 
 ---
 
-### ⏳ Fase 6: Empaquetado y Distribución Libre
+### ⏳ Fase 6: Transmisión y Pantalla Compartida a TV (Casting / Mirroring con Fidelidad Total)
+- [ ] **Soporte de Pantallas Secundarias (`DisplayManager` / `Presentation`):**
+  - Salida directa por cable USB-C a HDMI / DisplayPort (Modo Escritorio / Samsung DeX / Display externo): renderiza el pipeline completo de OpenGL ES y audio Oboe nativo con calibración idéntica a la pantalla del móvil.
+- [ ] **Protocolo de Pantalla Inalámbrica (Miracast / Wi-Fi Display):**
+  - Duplicación de pantalla a nivel del framebuffer del sistema: transmite directamente el flujo postprocesado con shaders y DSP de audio.
+- [ ] **Servidor de Streaming Local RTSP/HTTP (Sin dependencias de Google Cast ni Play Services):**
+  - Arquitectura compatible con Smart TVs universales (LG webOS, Samsung Tizen, Android TV, Fire TV, Roku y navegadores DLNA/UPnP) transmitiendo el flujo con las correcciones de color y audio preservadas.
+
+---
+
+### ⏳ Fase 7: Empaquetado y Distribución Libre
 - [x] **Pipeline de Integración Continua (CI/CD) con GitHub Actions (`build-debug.yml`):**
   - Descarga integral del repositorio y configuración automática de herramientas nativas (NDK r26d, CMake 3.22.1 y Rust stable con targets Android).
   - Compilación limpia forzada (**sin caché**) con flags `--no-build-cache` y `cache-disabled: true`.

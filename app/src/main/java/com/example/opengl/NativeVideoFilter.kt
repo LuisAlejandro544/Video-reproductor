@@ -66,7 +66,8 @@ object NativeVideoFilter {
         blurRadius: Float = 0.0f,
         backgroundDim: Float = 0.0f,
         fsrEnabled: Float = 0.0f,
-        fsrSharpness: Float = 0.0f
+        fsrSharpness: Float = 0.0f,
+        sunMode: Float = 0.0f
     ): Boolean {
         if (!isLibraryLoaded) return false
         return try {
@@ -85,7 +86,8 @@ object NativeVideoFilter {
                 blurRadius,
                 backgroundDim,
                 fsrEnabled,
-                fsrSharpness
+                fsrSharpness,
+                sunMode
             )
         } catch (e: Throwable) {
             Log.e(TAG, "Error invocando internalNativeRender: ${e.message}")
@@ -124,7 +126,8 @@ object NativeVideoFilter {
         blurRadius: Float,
         backgroundDim: Float,
         fsrEnabled: Float,
-        fsrSharpness: Float
+        fsrSharpness: Float,
+        sunMode: Float
     ): Boolean
 
     @JvmStatic

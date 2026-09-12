@@ -38,6 +38,8 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AspectRatio
 import androidx.compose.material.icons.filled.Audiotrack
 import androidx.compose.material.icons.filled.BrightnessHigh
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Widgets
 import androidx.compose.material.icons.filled.BrightnessLow
 import androidx.compose.material.icons.filled.BrightnessMedium
 import androidx.compose.material.icons.filled.Forward10
@@ -157,21 +159,25 @@ fun VideoPlayerScreen(
     onBackToHome: () -> Unit,
     onChangeVideoSource: () -> Unit,
     onOpenSettings: () -> Unit,
+    onAudioEngineChange: ((AudioEngineType) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
 
+    // Estado local reactivo del motor de audio seleccionado
+    var activeAudioEngine by remember(currentAudioEngine) { mutableStateOf(currentAudioEngine) }
+
     // Procesador de audio que desvía tramas PCM hacia Google Oboe C++ o hacia AudioTrack
     val oboeAudioProcessor = remember {
         OboeAudioProcessor().apply {
-            currentEngine = currentAudioEngine
+            currentEngine = activeAudioEngine
         }
     }
 
     // Actualización 100% real e inmediata del motor ante cualquier cambio en la configuración
-    LaunchedEffect(currentAudioEngine) {
-        oboeAudioProcessor.currentEngine = currentAudioEngine
+    LaunchedEffect(activeAudioEngine) {
+        oboeAudioProcessor.currentEngine = activeAudioEngine
     }
 
     // Estado de la reproducción
@@ -199,6 +205,18 @@ fun VideoPlayerScreen(
     // Control de Velocidad de Reproducción con Sonic Pitch Preservation (hasta 2.0x)
     var playbackSpeed by remember { mutableFloatStateOf(1.0f) }
     var showSpeedSheet by remember { mutableStateOf(false) }
+
+    // Panel lateral de herramientas y estado de bloqueo de controles
+    var showToolsSideSheet by remember { mutableStateOf(false) }
+    var isControlsLocked by remember { mutableStateOf(false) }
+
+    // Pantallas exclusivas e independientes para cada herramienta
+    var showPillarboxSheet by remember { mutableStateOf(false) }
+    var showFsrSheet by remember { mutableStateOf(false) }
+    var showSunModeSheet by remember { mutableStateOf(false) }
+    var showVoiceNightSheet by remember { mutableStateOf(false) }
+    var showAspectRatioSheet by remember { mutableStateOf(false) }
+    var showAudioEngineSheet by remember { mutableStateOf(false) }
 
     // Interacción del usuario arrastrando la barra de progreso
     var isDraggingSlider by remember { mutableStateOf(false) }
@@ -490,9 +508,20 @@ fun VideoPlayerScreen(
         }
     }
 
-    // Manejar botón Atrás del sistema
+    // Manejar botón Atrás del sistema de forma jerárquica
     BackHandler {
-        onBackToHome()
+        when {
+            showToolsSideSheet -> showToolsSideSheet = false
+            showEqualizerSheet -> showEqualizerSheet = false
+            showPillarboxSheet -> showPillarboxSheet = false
+            showFsrSheet -> showFsrSheet = false
+            showSpeedSheet -> showSpeedSheet = false
+            showSubtitlesSheet -> showSubtitlesSheet = false
+            showAspectRatioSheet -> showAspectRatioSheet = false
+            showAudioEngineSheet -> showAudioEngineSheet = false
+            isControlsLocked -> isControlsLocked = false
+            else -> onBackToHome()
+        }
     }
 
     Box(
@@ -552,86 +581,141 @@ fun VideoPlayerScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .testTag("player_gesture_surface")
-                .pointerInput(Unit) {
-                    awaitEachGesture {
-                        val down = awaitFirstDown(requireUnconsumed = false)
-                        val startX = down.position.x
-                        val startY = down.position.y
-                        var currentY = startY
-                        var hasDragged = false
-                        val isLeft = startX < (size.width / 2f)
-                        val touchSlop = viewConfiguration.touchSlop
-
-                        while (true) {
-                            val event = awaitPointerEvent()
-                            val change = event.changes.firstOrNull { it.id == down.id } ?: break
-
-                            if (change.isConsumed) {
-                                break
-                            }
-
-                            if (change.changedToUp()) {
-                                if (!hasDragged) {
-                                    // Toque simple: alternar visibilidad de los controles
-                                    showControls = !showControls
-                                    lastInteractionTime = System.currentTimeMillis()
-                                } else {
-                                    // Fin del deslizamiento: desvanecer suavemente el HUD minimalista
-                                    gestureHideJob?.cancel()
-                                    gestureHideJob = coroutineScope.launch {
-                                        delay(1000)
-                                        gestureIndicatorVisible = false
-                                    }
-                                }
-                                change.consume()
-                                break
-                            }
-
-                            val totalDx = abs(change.position.x - startX)
-                            val totalDy = abs(change.position.y - startY)
-                            val dragAmountY = change.position.y - currentY
-
-                            if (!hasDragged) {
-                                if (totalDy > touchSlop && totalDy > totalDx) {
-                                    hasDragged = true
+                .pointerInput(isControlsLocked) {
+                    if (isControlsLocked) {
+                        awaitEachGesture {
+                            val down = awaitFirstDown(requireUnconsumed = false)
+                            while (true) {
+                                val event = awaitPointerEvent()
+                                val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                                if (change.changedToUp()) {
                                     change.consume()
-                                    gestureHideJob?.cancel()
-                                    gestureIndicatorType = if (isLeft) GestureIndicatorType.BRIGHTNESS else GestureIndicatorType.VOLUME
-                                    gestureIndicatorVisible = true
+                                    break
+                                }
+                            }
+                        }
+                    } else {
+                        awaitEachGesture {
+                            val down = awaitFirstDown(requireUnconsumed = false)
+                            val startX = down.position.x
+                            val startY = down.position.y
+                            var currentY = startY
+                            var hasDragged = false
+                            val isLeft = startX < (size.width / 2f)
+                            val touchSlop = viewConfiguration.touchSlop
+
+                            while (true) {
+                                val event = awaitPointerEvent()
+                                val change = event.changes.firstOrNull { it.id == down.id } ?: break
+
+                                if (change.isConsumed) {
+                                    break
+                                }
+
+                                if (change.changedToUp()) {
+                                    if (!hasDragged) {
+                                        // Toque simple: alternar visibilidad de los controles
+                                        showControls = !showControls
+                                        lastInteractionTime = System.currentTimeMillis()
+                                    } else {
+                                        // Fin del deslizamiento: desvanecer suavemente el HUD minimalista
+                                        gestureHideJob?.cancel()
+                                        gestureHideJob = coroutineScope.launch {
+                                            delay(1000)
+                                            gestureIndicatorVisible = false
+                                        }
+                                    }
+                                    change.consume()
+                                    break
+                                }
+
+                                val totalDx = abs(change.position.x - startX)
+                                val totalDy = abs(change.position.y - startY)
+                                val dragAmountY = change.position.y - currentY
+
+                                if (!hasDragged) {
+                                    if (totalDy > touchSlop && totalDy > totalDx) {
+                                        hasDragged = true
+                                        change.consume()
+                                        gestureHideJob?.cancel()
+                                        gestureIndicatorType = if (isLeft) GestureIndicatorType.BRIGHTNESS else GestureIndicatorType.VOLUME
+                                        gestureIndicatorVisible = true
+                                        currentY = change.position.y
+                                    }
+                                } else {
+                                    change.consume()
+                                    val delta = -dragAmountY / (size.height.toFloat().coerceAtLeast(1f) * 0.45f)
+                                    if (isLeft) {
+                                        // Mitad izquierda: ajustar brillo de pantalla de la ventana
+                                        currentBrightness = (currentBrightness + delta).coerceIn(0.01f, 1f)
+                                        val window = activity?.window
+                                        if (window != null) {
+                                            val lp = window.attributes
+                                            lp.screenBrightness = currentBrightness
+                                            window.attributes = lp
+                                        }
+                                    } else {
+                                        // Mitad derecha: ajustar volumen multimedia físico del dispositivo
+                                        volumeFraction = (volumeFraction + delta).coerceIn(0f, 1f)
+                                        val targetVol = (volumeFraction * maxVolume).roundToInt().coerceIn(0, maxVolume)
+                                        if (targetVol != currentVolume) {
+                                            currentVolume = targetVol
+                                            audioManager?.setStreamVolume(android.media.AudioManager.STREAM_MUSIC, targetVol, 0)
+                                        }
+                                        if (isMuted && targetVol > 0) {
+                                            isMuted = false
+                                            exoPlayer.volume = 1f
+                                            OboeAudioEngine.setVolume(1f)
+                                        }
+                                    }
                                     currentY = change.position.y
                                 }
-                            } else {
-                                change.consume()
-                                val delta = -dragAmountY / (size.height.toFloat().coerceAtLeast(1f) * 0.45f)
-                                if (isLeft) {
-                                    // Mitad izquierda: ajustar brillo de pantalla de la ventana
-                                    currentBrightness = (currentBrightness + delta).coerceIn(0.01f, 1f)
-                                    val window = activity?.window
-                                    if (window != null) {
-                                        val lp = window.attributes
-                                        lp.screenBrightness = currentBrightness
-                                        window.attributes = lp
-                                    }
-                                } else {
-                                    // Mitad derecha: ajustar volumen multimedia físico del dispositivo
-                                    volumeFraction = (volumeFraction + delta).coerceIn(0f, 1f)
-                                    val targetVol = (volumeFraction * maxVolume).roundToInt().coerceIn(0, maxVolume)
-                                    if (targetVol != currentVolume) {
-                                        currentVolume = targetVol
-                                        audioManager?.setStreamVolume(android.media.AudioManager.STREAM_MUSIC, targetVol, 0)
-                                    }
-                                    if (isMuted && targetVol > 0) {
-                                        isMuted = false
-                                        exoPlayer.volume = 1f
-                                        OboeAudioEngine.setVolume(1f)
-                                    }
-                                }
-                                currentY = change.position.y
                             }
                         }
                     }
                 }
         )
+
+        // Botón flotante para desbloquear la pantalla cuando los controles táctiles están bloqueados
+        if (isControlsLocked) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .statusBarsPadding()
+                    .padding(20.dp),
+                contentAlignment = Alignment.TopStart
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(24.dp),
+                    color = Color.Black.copy(alpha = 0.78f),
+                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.35f)),
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(24.dp))
+                        .clickable { isControlsLocked = false }
+                        .testTag("player_unlock_button")
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Lock,
+                            contentDescription = "Pantalla bloqueada. Toca para desbloquear.",
+                            tint = Color(0xFF38BDF8),
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Text(
+                            text = "Desbloquear",
+                            style = MaterialTheme.typography.labelMedium.copy(
+                                color = Color.White,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        )
+                    }
+                }
+            }
+        }
 
         // Indicador de carga / búfer cuando está procesando
         if (isBuffering) {
@@ -674,7 +758,7 @@ fun VideoPlayerScreen(
 
         // Interfaz superpuesta (Controles, Título, Tiempo)
         AnimatedVisibility(
-            visible = showControls,
+            visible = showControls && !isControlsLocked,
             enter = fadeIn(),
             exit = fadeOut(),
             modifier = Modifier.fillMaxSize()
@@ -698,7 +782,7 @@ fun VideoPlayerScreen(
                     title = videoItem.name,
                     size = videoItem.formattedSize,
                     aspectModeLabel = currentAspectMode.label,
-                    selectedAudioEngine = currentAudioEngine,
+                    selectedAudioEngine = activeAudioEngine,
                     isPortrait = isPortrait,
                     onBack = onBackToHome,
                     onChangeSource = onChangeVideoSource,
@@ -714,6 +798,10 @@ fun VideoPlayerScreen(
                         onPositionChanged(exoPlayer.currentPosition)
                         onOpenSettings()
                     },
+                    onOpenTools = {
+                        showToolsSideSheet = true
+                        lastInteractionTime = System.currentTimeMillis()
+                    },
                     modifier = Modifier.align(Alignment.TopCenter)
                 )
 
@@ -728,7 +816,7 @@ fun VideoPlayerScreen(
                                 exoPlayer.seekTo(0)
                             }
                             exoPlayer.play()
-                            if (currentAudioEngine == AudioEngineType.OBOE) {
+                            if (activeAudioEngine == AudioEngineType.OBOE) {
                                 OboeAudioEngine.start()
                             }
                             isPlaying = true
@@ -781,6 +869,10 @@ fun VideoPlayerScreen(
                         showSubtitlesSheet = true
                         lastInteractionTime = System.currentTimeMillis()
                     },
+                    onOpenTools = {
+                        showToolsSideSheet = true
+                        lastInteractionTime = System.currentTimeMillis()
+                    },
                     onSeekStarted = {
                         isDraggingSlider = true
                         lastInteractionTime = System.currentTimeMillis()
@@ -808,7 +900,30 @@ fun VideoPlayerScreen(
             }
         }
 
-        // Panel inferior del Ecualizador de Video en Tiempo Real
+        // Panel Lateral de Herramientas (Navegación exclusiva según diseño)
+        PlayerToolsSideSheet(
+            visible = showToolsSideSheet,
+            onDismiss = { showToolsSideSheet = false },
+            onSelectTool = { tool ->
+                when (tool) {
+                    PlayerToolItem.LOCK -> {
+                        isControlsLocked = true
+                        showControls = false
+                    }
+                    PlayerToolItem.PLAYBACK_SPEED -> showSpeedSheet = true
+                    PlayerToolItem.VIDEO_EQUALIZER -> showEqualizerSheet = true
+                    PlayerToolItem.SUN_MODE -> showSunModeSheet = true
+                    PlayerToolItem.PILLARBOX_BLUR -> showPillarboxSheet = true
+                    PlayerToolItem.FSR_SUPER_RESOLUTION -> showFsrSheet = true
+                    PlayerToolItem.VOICE_NIGHT_AUDIO -> showVoiceNightSheet = true
+                    PlayerToolItem.SUBTITLES -> showSubtitlesSheet = true
+                    PlayerToolItem.ASPECT_RATIO -> showAspectRatioSheet = true
+                    PlayerToolItem.AUDIO_ENGINE -> showAudioEngineSheet = true
+                }
+            }
+        )
+
+        // Pantalla exclusiva e independiente del Ecualizador de Video (Color / Contraste / Brillo)
         if (showEqualizerSheet) {
             VideoEqualizerSheet(
                 state = equalizerState,
@@ -817,7 +932,41 @@ fun VideoPlayerScreen(
             )
         }
 
-        // Panel inferior de Velocidad de Reproducción (hasta 2.0x)
+        // Pantalla exclusiva e independiente del Modo Sol Extremo y Accesibilidad
+        if (showSunModeSheet) {
+            SunModeSheet(
+                state = equalizerState,
+                onStateChange = { equalizerState = it },
+                onDismiss = { showSunModeSheet = false }
+            )
+        }
+
+        // Pantalla exclusiva e independiente de Relleno de Fondo Desenfocado (Pillarbox Blur)
+        if (showPillarboxSheet) {
+            PillarboxBlurSheet(
+                state = equalizerState,
+                onStateChange = { equalizerState = it },
+                onDismiss = { showPillarboxSheet = false }
+            )
+        }
+
+        // Pantalla exclusiva e independiente de Super Resolución FSR 1.0 (AMD FidelityFX)
+        if (showFsrSheet) {
+            FsrUpscaleSheet(
+                state = equalizerState,
+                onStateChange = { equalizerState = it },
+                onDismiss = { showFsrSheet = false }
+            )
+        }
+
+        // Pantalla exclusiva e independiente de Audio Inteligente DSP (Voces Claras / Modo Nocturno)
+        if (showVoiceNightSheet) {
+            VoiceNightAudioSheet(
+                onDismiss = { showVoiceNightSheet = false }
+            )
+        }
+
+        // Pantalla exclusiva e independiente de Velocidad de Reproducción
         if (showSpeedSheet) {
             PlaybackSpeedSheet(
                 currentSpeed = playbackSpeed,
@@ -826,6 +975,28 @@ fun VideoPlayerScreen(
                     exoPlayer.playbackParameters = PlaybackParameters(newSpeed, 1.0f)
                 },
                 onDismiss = { showSpeedSheet = false }
+            )
+        }
+
+        // Pantalla exclusiva e independiente de Selección de Relación de Aspecto
+        if (showAspectRatioSheet) {
+            AspectRatioSheet(
+                currentMode = currentAspectMode,
+                onModeSelected = { currentAspectMode = it },
+                onDismiss = { showAspectRatioSheet = false }
+            )
+        }
+
+        // Pantalla exclusiva e independiente de Selección de Motor de Audio
+        if (showAudioEngineSheet) {
+            AudioEngineSheet(
+                currentEngine = activeAudioEngine,
+                onEngineSelected = { engine ->
+                    activeAudioEngine = engine
+                    oboeAudioProcessor.currentEngine = engine
+                    onAudioEngineChange?.invoke(engine)
+                },
+                onDismiss = { showAudioEngineSheet = false }
             )
         }
 
@@ -1004,6 +1175,7 @@ private fun TopControlsBar(
     onChangeSource: () -> Unit,
     onToggleAspectMode: () -> Unit,
     onOpenSettings: () -> Unit,
+    onOpenTools: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Box(
@@ -1058,6 +1230,18 @@ private fun TopControlsBar(
                                 )
                             )
                         }
+                    }
+
+                    // Botón Herramientas
+                    IconButton(
+                        onClick = onOpenTools,
+                        modifier = Modifier.testTag("player_tools_button_portrait")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Widgets,
+                            contentDescription = "Herramientas del reproductor",
+                            tint = Color.White
+                        )
                     }
 
                     // Acceso directo a Ajustes
@@ -1294,6 +1478,18 @@ private fun TopControlsBar(
                     }
                 }
 
+                // Botón de acceso directo a Herramientas
+                IconButton(
+                    onClick = onOpenTools,
+                    modifier = Modifier.testTag("player_tools_button_landscape")
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Widgets,
+                        contentDescription = "Herramientas del reproductor",
+                        tint = Color.White
+                    )
+                }
+
                 // Botón de acceso directo a Ajustes
                 IconButton(
                     onClick = onOpenSettings,
@@ -1393,6 +1589,7 @@ private fun BottomControlsBar(
     onOpenSpeedSelector: () -> Unit,
     onOpenEqualizer: () -> Unit,
     onOpenSubtitles: () -> Unit,
+    onOpenTools: () -> Unit,
     onSeekStarted: () -> Unit,
     onSeekChanged: (Float) -> Unit,
     onSeekFinished: () -> Unit,
@@ -1567,6 +1764,37 @@ private fun BottomControlsBar(
                                 style = MaterialTheme.typography.labelSmall.copy(
                                     fontWeight = FontWeight.Bold,
                                     color = if (hasActiveSubtitles) Color(0xFF34D399) else Color.White
+                                )
+                            )
+                        }
+                    }
+
+                    // Botón de Menú de Herramientas
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = Color.White.copy(alpha = 0.15f),
+                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.25f)),
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable(onClick = onOpenTools)
+                            .testTag("player_tools_button")
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Widgets,
+                                contentDescription = "Herramientas del reproductor",
+                                tint = Color.White,
+                                modifier = Modifier.size(15.dp)
+                            )
+                            Text(
+                                text = "Herramientas",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White
                                 )
                             )
                         }

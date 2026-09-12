@@ -49,7 +49,8 @@ public:
         float blurRadius = 0.0f,
         float backgroundDim = 0.0f,
         float fsrEnabled = 0.0f,
-        float fsrSharpness = 0.0f
+        float fsrSharpness = 0.0f,
+        float sunMode = 0.0f
     );
 
     // Libera shaders y programa en GPU
@@ -84,6 +85,7 @@ private:
     GLint muBackgroundDimHandle;
     GLint muFsrEnabledHandle;
     GLint muFsrSharpnessHandle;
+    GLint muSunModeHandle;
 };
 
 #endif // NOVA_VIDEO_COLOR_ENGINE_H

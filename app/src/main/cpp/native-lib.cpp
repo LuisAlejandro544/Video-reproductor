@@ -137,6 +137,32 @@ Java_com_example_audio_OboeAudioEngine_nativeSetVolume(
     }
 }
 
+JNIEXPORT void JNICALL
+Java_com_example_audio_OboeAudioEngine_nativeSetDynamicCompressor(
+    JNIEnv* env,
+    jobject /* this */,
+    jboolean enabled,
+    jfloat intensity
+) {
+    auto engine = getAudioEngine();
+    if (engine) {
+        engine->setDynamicCompressor(enabled == JNI_TRUE, static_cast<float>(intensity));
+    }
+}
+
+JNIEXPORT void JNICALL
+Java_com_example_audio_OboeAudioEngine_nativeSetVoiceClarity(
+    JNIEnv* env,
+    jobject /* this */,
+    jboolean enabled,
+    jfloat gain
+) {
+    auto engine = getAudioEngine();
+    if (engine) {
+        engine->setVoiceClarity(enabled == JNI_TRUE, static_cast<float>(gain));
+    }
+}
+
 JNIEXPORT jboolean JNICALL
 Java_com_example_audio_OboeAudioEngine_nativeIsPlaying(
     JNIEnv* env,
@@ -222,7 +248,8 @@ Java_com_example_opengl_NativeVideoFilter_internalNativeRender(
     jfloat blurRadius,
     jfloat backgroundDim,
     jfloat fsrEnabled,
-    jfloat fsrSharpness
+    jfloat fsrSharpness,
+    jfloat sunMode
 ) {
     auto engine = getVideoColorEngine();
     if (!engine || !stMatrix || !mvpMatrix) {
@@ -249,7 +276,8 @@ Java_com_example_opengl_NativeVideoFilter_internalNativeRender(
             blurRadius,
             backgroundDim,
             fsrEnabled,
-            fsrSharpness
+            fsrSharpness,
+            sunMode
         );
     }
 
@@ -277,13 +305,14 @@ Java_com_example_opengl_NativeVideoFilter_nativeRender(
     jfloat blurRadius,
     jfloat backgroundDim,
     jfloat fsrEnabled,
-    jfloat fsrSharpness
+    jfloat fsrSharpness,
+    jfloat sunMode
 ) {
     return Java_com_example_opengl_NativeVideoFilter_internalNativeRender(
         env, nullptr, textureId, stMatrix, mvpMatrix, brightness, contrast,
         saturation, gamma, sharpness, texWidth, texHeight,
         blueLightFilter, blurRadius, backgroundDim,
-        fsrEnabled, fsrSharpness
+        fsrEnabled, fsrSharpness, sunMode
     );
 }
 

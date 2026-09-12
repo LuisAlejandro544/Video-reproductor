@@ -22,7 +22,8 @@ data class VideoEqualizerState(
     val blueLightFilter: Float = 0.0f,
     val pillarboxBlur: Boolean = true,
     val fsrEnabled: Boolean = false,
-    val fsrSharpness: Float = 0.75f
+    val fsrSharpness: Float = 0.75f,
+    val sunMode: Float = 0.0f
 ) {
     val isDefault: Boolean
         get() = brightness == 0.0f &&
@@ -33,7 +34,8 @@ data class VideoEqualizerState(
                 blueLightFilter == 0.0f &&
                 pillarboxBlur &&
                 !fsrEnabled &&
-                fsrSharpness == 0.75f
+                fsrSharpness == 0.75f &&
+                sunMode == 0.0f
 
     companion object {
         val DEFAULT = VideoEqualizerState()
@@ -105,6 +107,18 @@ data class VideoEqualizerState(
                 pillarboxBlur = true,
                 fsrEnabled = false,
                 fsrSharpness = 0.75f
+            ),
+            "Sol Extremo" to VideoEqualizerState(
+                brightness = 0.08f,
+                contrast = 1.40f,
+                saturation = 1.30f,
+                gamma = 1.25f,
+                sharpness = 0.60f,
+                blueLightFilter = 0.0f,
+                pillarboxBlur = true,
+                fsrEnabled = false,
+                fsrSharpness = 0.75f,
+                sunMode = 1.0f
             ),
             "Blanco y Negro" to VideoEqualizerState(
                 brightness = 0.0f,

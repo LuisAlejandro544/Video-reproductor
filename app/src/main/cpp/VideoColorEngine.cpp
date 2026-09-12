@@ -66,6 +66,7 @@ R"glsl(
     uniform float uBackgroundDim;    // Rango: [0.0, 1.0]  (atenuación de luminosidad para fondo)
     uniform float uFsrEnabled;       // 0.0 = desactivado, 1.0 = AMD FSR 1.0 activado
     uniform float uFsrSharpness;     // Rango: [0.0, 1.0]  (Afilado adaptativo al contraste RCAS)
+    uniform float uSunMode;          // Rango: [0.0, 1.0]  (0.0 = desactivado, 1.0 = Modo Sol Extremo / Alto Contraste)
 
     void main() {
         vec4 color = texture2D(sTexture, vTextureCoord);
@@ -174,6 +175,19 @@ R"glsl(
             color.rgb = clamp(color.rgb, 0.0, 1.0);
         }
 
+        // 8. Modo Sol Extremo / Accesibilidad de Alto Contraste para Exteriores
+        if (uSunMode > 0.01) {
+            float sunFactor = clamp(uSunMode, 0.0, 1.0);
+            // Elevación dinámica de sombras para combatir el deslumbramiento solar
+            vec3 lifted = color.rgb / (color.rgb + vec3(0.35 * (1.0 - color.rgb)));
+            color.rgb = mix(color.rgb, lifted, 0.50 * sunFactor);
+            // Expansión de luminancia y realce de bordes de alto contraste
+            float lum = dot(color.rgb, vec3(0.2126, 0.7152, 0.0722));
+            color.rgb = mix(color.rgb, color.rgb + (color.rgb - vec3(lum)) * 0.35, 0.50 * sunFactor);
+            color.rgb = mix(vec3(lum), color.rgb, 1.0 + 0.30 * sunFactor);
+            color.rgb = clamp(color.rgb, 0.0, 1.0);
+        }
+
         // Asegurar opacidad total para evitar que frames con alfa nulo decodificados por hardware se vean negros
         gl_FragColor = vec4(color.rgb, 1.0);
     }
@@ -196,7 +210,8 @@ VideoColorEngine::VideoColorEngine()
       muBlurRadiusHandle(-1),
       muBackgroundDimHandle(-1),
       muFsrEnabledHandle(-1),
-      muFsrSharpnessHandle(-1) {
+      muFsrSharpnessHandle(-1),
+      muSunModeHandle(-1) {
 }
 
 VideoColorEngine::~VideoColorEngine() {
@@ -300,6 +315,7 @@ bool VideoColorEngine::init() {
     muBackgroundDimHandle= -1;
     muFsrEnabledHandle   = -1;
     muFsrSharpnessHandle = -1;
+    muSunModeHandle      = -1;
 
     mProgram = createProgram(sVertexShaderSource, sFragmentShaderSource);
     if (mProgram == 0) {
@@ -325,6 +341,7 @@ bool VideoColorEngine::init() {
     muBackgroundDimHandle= glGetUniformLocation(mProgram, "uBackgroundDim");
     muFsrEnabledHandle   = glGetUniformLocation(mProgram, "uFsrEnabled");
     muFsrSharpnessHandle = glGetUniformLocation(mProgram, "uFsrSharpness");
+    muSunModeHandle      = glGetUniformLocation(mProgram, "uSunMode");
 
     LOGI("VideoColorEngine inicializado exitosamente en OpenGL ES.");
     return true;
@@ -345,7 +362,8 @@ bool VideoColorEngine::render(
     float blurRadius,
     float backgroundDim,
     float fsrEnabled,
-    float fsrSharpness
+    float fsrSharpness,
+    float sunMode
 ) {
     std::lock_guard<std::mutex> lock(mEngineMutex);
     if (mProgram == 0) {
@@ -373,6 +391,7 @@ bool VideoColorEngine::render(
     if (muBackgroundDimHandle >= 0) glUniform1f(muBackgroundDimHandle, backgroundDim);
     if (muFsrEnabledHandle >= 0) glUniform1f(muFsrEnabledHandle, fsrEnabled);
     if (muFsrSharpnessHandle >= 0) glUniform1f(muFsrSharpnessHandle, fsrSharpness);
+    if (muSunModeHandle >= 0)    glUniform1f(muSunModeHandle, sunMode);
 
     // Configurar texel step para filtro de nitidez y desenfoque
     if (muTexelStepHandle >= 0) {

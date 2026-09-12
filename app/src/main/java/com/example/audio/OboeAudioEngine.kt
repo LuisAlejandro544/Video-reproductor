@@ -11,6 +11,8 @@ import android.util.Log
 object OboeAudioEngine {
     private const val TAG = "OboeAudioEngine"
     private var isLibraryLoaded = false
+    private var isCompressorActive = false
+    private var isVoiceClarityActive = false
 
     init {
         try {
@@ -24,6 +26,10 @@ object OboeAudioEngine {
     }
 
     fun isAvailable(): Boolean = isLibraryLoaded
+
+    fun isDynamicCompressorEnabled(): Boolean = isCompressorActive
+
+    fun isVoiceClarityEnabled(): Boolean = isVoiceClarityActive
 
     fun init(sampleRate: Int = 48000, channelCount: Int = 2): Boolean {
         if (!isLibraryLoaded) return false
@@ -93,6 +99,34 @@ object OboeAudioEngine {
         }
     }
 
+    /**
+     * Activa o desactiva el Compresor Dinámico / Modo Nocturno (DRC) en C++.
+     * Atenúa picos estrepitosos (explosiones, disparos) y eleva sonidos suaves.
+     */
+    fun setDynamicCompressor(enabled: Boolean, intensity: Float = 0.8f) {
+        isCompressorActive = enabled
+        if (!isLibraryLoaded) return
+        try {
+            nativeSetDynamicCompressor(enabled, intensity)
+        } catch (e: Exception) {
+            Log.e(TAG, "Excepción en nativeSetDynamicCompressor", e)
+        }
+    }
+
+    /**
+     * Activa o desactiva el Realce de Diálogos / Modo Voces Claras en C++.
+     * Aplica ganancia selectiva sobre la banda vocal (1.5 kHz a 3.5 kHz).
+     */
+    fun setVoiceClarity(enabled: Boolean, gain: Float = 0.75f) {
+        isVoiceClarityActive = enabled
+        if (!isLibraryLoaded) return
+        try {
+            nativeSetVoiceClarity(enabled, gain)
+        } catch (e: Exception) {
+            Log.e(TAG, "Excepción en nativeSetVoiceClarity", e)
+        }
+    }
+
     fun isPlaying(): Boolean {
         if (!isLibraryLoaded) return false
         return try {
@@ -146,6 +180,8 @@ object OboeAudioEngine {
     private external fun nativeRelease()
     private external fun nativeWrite(buffer: ByteArray, offset: Int, length: Int): Int
     private external fun nativeSetVolume(volume: Float)
+    private external fun nativeSetDynamicCompressor(enabled: Boolean, intensity: Float)
+    private external fun nativeSetVoiceClarity(enabled: Boolean, gain: Float)
     private external fun nativeIsPlaying(): Boolean
     private external fun nativeGetApiName(): String
     private external fun nativeGetSampleRate(): Int

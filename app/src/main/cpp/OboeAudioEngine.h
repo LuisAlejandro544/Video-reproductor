@@ -31,6 +31,12 @@ public:
     int32_t writeAudioData(const int16_t* audioData, int32_t numSamples);
     void setVolume(float volume);
 
+    // DSP: Compresor Dinámico (Night Mode) y Realce de Diálogos (Voice Clarity)
+    void setDynamicCompressor(bool enabled, float intensity);
+    void setVoiceClarity(bool enabled, float gain);
+    bool isDynamicCompressorEnabled() const { return mCompressorEnabled; }
+    bool isVoiceClarityEnabled() const { return mVoiceClarityEnabled; }
+
     bool isPlaying() const;
     std::string getAudioApiName() const;
     int32_t getSampleRate() const;
@@ -56,6 +62,14 @@ private:
     int32_t mChannelCount;
     float mVolume;
     bool mIsPlaying;
+
+    // Parámetros DSP en tiempo real
+    bool mCompressorEnabled;
+    float mCompressorIntensity;
+    bool mVoiceClarityEnabled;
+    float mVoiceClarityGain;
+    float mEnvelope;
+    float mVoicePrevLowPass;
 
     std::mutex mBufferMutex;
     std::vector<int16_t> mAudioBuffer;

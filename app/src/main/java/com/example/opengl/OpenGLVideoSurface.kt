@@ -221,7 +221,8 @@ class OpenGLVideoRenderer(
                 blurRadius = 0.0f,
                 backgroundDim = 0.0f,
                 fsrEnabled = if (currentEq.fsrEnabled) 1.0f else 0.0f,
-                fsrSharpness = currentEq.fsrSharpness
+                fsrSharpness = currentEq.fsrSharpness,
+                sunMode = currentEq.sunMode
             )
         } catch (e: Throwable) {
             Log.w(TAG, "Excepción transitoria en onDrawFrame: ${e.message}")

@@ -16,6 +16,12 @@ OboeAudioEngine::OboeAudioEngine()
     , mChannelCount(2)
     , mVolume(1.0f)
     , mIsPlaying(false)
+    , mCompressorEnabled(false)
+    , mCompressorIntensity(0.8f)
+    , mVoiceClarityEnabled(false)
+    , mVoiceClarityGain(0.75f)
+    , mEnvelope(0.0f)
+    , mVoicePrevLowPass(0.0f)
     , mReadIndex(0)
     , mFramesWritten(0) {
     mAudioBuffer.reserve(MAX_BUFFER_SAMPLES);
@@ -157,6 +163,20 @@ void OboeAudioEngine::setVolume(float volume) {
     mVolume = std::max(0.0f, std::min(1.0f, volume));
 }
 
+void OboeAudioEngine::setDynamicCompressor(bool enabled, float intensity) {
+    std::lock_guard<std::mutex> lock(mBufferMutex);
+    mCompressorEnabled = enabled;
+    mCompressorIntensity = std::max(0.0f, std::min(1.0f, intensity));
+    LOGI("Compresor Dinámico (Night Mode): %s (Intensidad: %.2f)", enabled ? "ON" : "OFF", mCompressorIntensity);
+}
+
+void OboeAudioEngine::setVoiceClarity(bool enabled, float gain) {
+    std::lock_guard<std::mutex> lock(mBufferMutex);
+    mVoiceClarityEnabled = enabled;
+    mVoiceClarityGain = std::max(0.0f, std::min(1.0f, gain));
+    LOGI("Modo Voces Claras: %s (Ganancia: %.2f)", enabled ? "ON" : "OFF", mVoiceClarityGain);
+}
+
 bool OboeAudioEngine::isPlaying() const {
     return mIsPlaying;
 }
@@ -200,6 +220,37 @@ oboe::DataCallbackResult OboeAudioEngine::onAudioReady(
 
     for (size_t i = 0; i < samplesToCopy; ++i) {
         float sample = static_cast<float>(mAudioBuffer[mReadIndex + i]) * mVolume;
+
+        // 1. Realce de Diálogos / Voces Claras (Peaking en banda vocal 1.5 kHz - 3.5 kHz)
+        if (mVoiceClarityEnabled && mVoiceClarityGain > 0.01f) {
+            float lowPass = 0.72f * mVoicePrevLowPass + 0.28f * sample;
+            mVoicePrevLowPass = lowPass;
+            float voiceBand = sample - lowPass;
+            sample += voiceBand * (mVoiceClarityGain * 1.35f);
+        }
+
+        // 2. Compresor Dinámico / Modo Nocturno (DRC - atenúa picos/explosiones, eleva susurros)
+        if (mCompressorEnabled && mCompressorIntensity > 0.01f) {
+            float absSample = std::abs(sample);
+            if (absSample > mEnvelope) {
+                mEnvelope = 0.08f * absSample + 0.92f * mEnvelope;
+            } else {
+                mEnvelope = 0.002f * absSample + 0.998f * mEnvelope;
+            }
+
+            float threshold = 9500.0f * (1.0f - mCompressorIntensity * 0.35f);
+            if (mEnvelope > threshold) {
+                float excess = mEnvelope - threshold;
+                float ratio = 3.5f + mCompressorIntensity * 4.5f;
+                float compressedEnvelope = threshold + (excess / ratio);
+                float gainReduction = compressedEnvelope / std::max(1.0f, mEnvelope);
+                sample *= gainReduction;
+            } else if (mEnvelope > 80.0f && mEnvelope < threshold * 0.45f) {
+                float quietBoost = 1.0f + (mCompressorIntensity * 0.65f) * (1.0f - (mEnvelope / (threshold * 0.45f)));
+                sample *= quietBoost;
+            }
+        }
+
         // Clamp a 16-bit signed integer
         sample = std::max(-32768.0f, std::min(32767.0f, sample));
         outputBuffer[i] = static_cast<int16_t>(sample);

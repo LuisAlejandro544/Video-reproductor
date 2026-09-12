@@ -40,6 +40,14 @@
     - Atenuación selectiva y suave del espectro azul (0% a 100%) con sutil compensación de temperatura ámbar.
     - Reduce la fatiga ocular durante sesiones de visualización prolongadas o en entornos nocturnos.
     - Preset dedicado "Descanso Visual" con un solo toque.
+  - **Modo Sol Extremo / Accesibilidad de Alto Contraste (Shader GLSL en GPU):**
+    - Algoritmo de transferencia luminosa adaptativa no lineal ejecutado directamente en la GPU (`VideoColorEngine`).
+    - Eleva y expande las sombras y áreas empastadas sin sobreexponer las altas luces, compensando el reflejo y la luz ambiental abrasadora sin necesidad de sobrecalentar la pantalla al 100% de brillo manual.
+    - Deslizador de intensidad de realce solar (0% a 100%) y perfiles dedicados (*Sol Directo Pleno Día*, *Alto Contraste Accesibilidad*, *Equilibrado al Aire Libre*).
+  - **Compresor Dinámico (DRC) y Modo Voces Claras (DSP Nativo en C++ con Google Oboe):**
+    - **Filtro Peaking Vocal:** Ganancia selectiva sobre la banda formativa humana (1.5 kHz a 3.5 kHz) para maximizar la inteligibilidad de diálogos y susurros en películas y series.
+    - **Compresor Dinámico Nocturno (Dynamic Range Compressor):** Atenuación automática con tiempo de respuesta de microsegundos sobre picos estridentes (explosiones, disparos) mientras eleva pasajes de bajo volumen para disfrutar del cine sin sobresaltos.
+    - Cero latencia añadida (0 ms) ejecutado dentro del bucle de callback de audio C++ con punto flotante acelerado por hardware (NEON).
   - **Desenfoque de Fondo para Videos Verticales (Pillarbox Blur):**
     - Sustituye las barras negras laterales generadas al reproducir videos verticales (formato 9:16 o 4:3 en pantallas apaisadas) por una versión ampliada, desenfocada (filtro Gaussiano de 9 toques) y suavemente atenuada del propio video en tiempo real.
     - Ejecutado directamente en GPU mediante doble paso de renderizado sin sobrecarga de decodificación adicional ni lag.
@@ -62,6 +70,19 @@
   - Selector de velocidad desde 0.25x hasta un máximo de **2.0x** tanto por presets rápidos como por ajuste fino continuo.
   - Algoritmo de estiramiento temporal *Sonic Pitch Preservation* activo: conserva intacta la tonalidad original de las voces y de los instrumentos musicales, evitando por completo distorsiones acústicas o el efecto "voz de ardilla".
   - Botón dedicado en la barra de controles con etiqueta de velocidad en vivo (`PlaybackSpeedSheet`).
+- **Arquitectura Modular de Herramientas del Reproductor (Pantallas Independientes):**
+  - Panel lateral interactivo (`PlayerToolsSideSheet`) accesible con un toque desde las barras superior e inferior.
+  - Cada herramienta cuenta con su propia pantalla o panel modal independiente y exclusivo para una experiencia enfocada y limpia:
+    - **Ecualizador de Video (`VideoEqualizerSheet`):** Calibración de color (brillo, contraste, saturación, gamma), nitidez por convolución y presets de imagen.
+    - **Modo Sol Extremo (`SunModeSheet`):** Pantalla independiente de compensación para exteriores bajo luz solar directa y perfiles de alto contraste para accesibilidad.
+    - **Relleno Desenfoque Vertical (`PillarboxBlurSheet`):** Pantalla exclusiva para configurar el desenfoque Gaussiano y atenuación de fondo cuando un video vertical se reproduce con bandas negras.
+    - **Super-Resolución AMD FSR 1.0 (`FsrUpscaleSheet`):** Pantalla dedicada para activar el escalado espacial adaptativo (EASU) y regular la nitidez dependiente del contraste (RCAS).
+    - **Compresor Dinámico y Voces Claras (`VoiceNightAudioSheet`):** Pantalla dedicada para realce de diálogos y compresión de rango dinámico para cine nocturno en DSP C++.
+    - **Relación de Aspecto (`AspectRatioSheet`):** Selector independiente de proporción geométrica (*Ajustar*, *Zoom*, *Llenar*).
+    - **Motor de Audio (`AudioEngineSheet`):** Selector independiente entre Google Oboe nativo en C++ y Android Media3.
+    - **Velocidad de Reproducción (`PlaybackSpeedSheet`):** Panel dedicado de velocidad con *Sonic Pitch Preservation*.
+    - **Gestor de Subtítulos (`SubtitlesBottomSheet`):** Configuración de subtítulos internos y externos con ajuste de escala tipográfica.
+    - **Bloqueo de Controles (`Lock`):** Modo para inmovilizar gestos y toques accidentales con botón flotante animado de desbloqueo instantáneo.
 - **Doble Motor de Audio Seleccionable:**
   - **Google Oboe (Nativo C++):** Motor de ultra baja latencia que interactúa directamente con **AAudio** en Android 8.0+ y realiza fallback automático a **OpenSL ES** en hardware heredado. Elimina microcortes y asegura sincronización estricta A/V.
   - **Media3 (AudioTrack):** Canal estándar de audio del sistema Android para máxima compatibilidad.
