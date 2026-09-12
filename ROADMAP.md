@@ -25,6 +25,8 @@ Este documento detalla las fases de desarrollo planificadas para convertir a **N
 - [x] **Biblioteca Local Persistente con Room (SQLite):** Registro de archivos importados y vistos mostrando título completo, duración real formateada (`MediaMetadataRetriever`), tamaño en MB/GB y barra de progreso.
 - [x] Reanudación con un solo toque directamente desde el último punto de visualización guardado en base de datos.
 - [x] Interfaz de usuario inspirada en controles de PC (Seekbar, saltos de 10s, modos de relación de aspecto).
+- [x] **Modo Inmersivo Completo:** Ocultamiento automático de la barra de estado (reloj, batería, notificaciones) y barra de navegación durante la reproducción.
+- [x] **Gesto de Avance Rápido a 2X:** Activación instantánea a 2.0x al mantener presionado el lateral derecho (700 ms) con badge flotante HUD y reversión automática a la velocidad previa al soltar.
 - [x] **Gestos Táctiles con HUD Minimalista:** Control de brillo deslizando en la mitad izquierda y control de volumen físico en la mitad derecha con indicador flotante no invasivo.
 - [x] Gestión de pantalla encendida (`FLAG_KEEP_SCREEN_ON`), restauración de brillo y ciclo de vida de la actividad.
 - [x] Compatibilidad con formatos populares (MP4, MKV, WebM, AVI, MOV).
@@ -34,6 +36,8 @@ Este documento detalla las fases de desarrollo planificadas para convertir a **N
 ### ✅ Fase 2: Motores de Audio y Capa Nativa (Completada)
 - [x] Elevación de versión mínima de sistema a **Android 8.0 (API 26)** para garantizar acceso nativo a AAudio.
 - [x] Integración de **Google Oboe 1.9.3** mediante Prefab y CMake en C++17.
+- [x] **Optimización de Oboe con Búfer Circular Estático:** Eliminación de allocations dinámicas en el bucle de renderizado y soporte de vaciado instantáneo (`flush()`) para saltos temporales (seek) sin cuelgues de audio.
+- [x] **Integración de Decodificadores FFmpeg Puros:** Integración de `media3-ffmpeg-decoder` (DTS, AC3, TrueHD, FLAC, Opus) sin wrappers obsoletos.
 - [x] `OboeAudioProcessor` conectado a Media3 para desviar tramas PCM hacia el motor nativo en C++.
 - [x] Selector dinámico en la interfaz para alternar entre **Oboe C++ (Baja Latencia)** y **Media3 (AudioTrack estándar)**.
 - [x] Transición del diálogo modal hacia una **Pantalla Independiente de Configuración (`SettingsScreen`)** con navegación desacoplada y conservación de estado de reproducción.

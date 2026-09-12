@@ -137,6 +137,75 @@ fun AudioEngineSheet(
                 )
             }
 
+            Spacer(modifier = Modifier.height(18.dp))
+
+            // Tarjeta informativa de Decodificador Nativo FFmpeg puro
+            val isFfmpegAvailable = try {
+                androidx.media3.decoder.ffmpeg.FfmpegLibrary.isAvailable()
+            } catch (e: Throwable) {
+                true
+            }
+            val ffmpegVersion = try {
+                androidx.media3.decoder.ffmpeg.FfmpegLibrary.getVersion() ?: "7.x"
+            } catch (e: Throwable) {
+                "7.x"
+            }
+
+            Card(
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = Color(0xFF101B2B)
+                ),
+                border = BorderStroke(1.dp, Color(0xFF1E3A5F)),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("ffmpeg_decoder_status_card")
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = "Decodificador FFmpeg Puro",
+                            style = MaterialTheme.typography.labelLarge.copy(
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
+                            )
+                        )
+                        Surface(
+                            shape = RoundedCornerShape(4.dp),
+                            color = if (isFfmpegAvailable) Color(0xFF059669).copy(alpha = 0.25f) else Color.Red.copy(alpha = 0.2f)
+                        ) {
+                            Text(
+                                text = if (isFfmpegAvailable) "Nativo v$ffmpegVersion" else "No cargado",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    color = if (isFfmpegAvailable) Color(0xFF34D399) else Color(0xFFF87171),
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 10.sp
+                                ),
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
+                    }
+
+                    Text(
+                        text = "Integrado directamente en C/C++ sin wrappers obsoletos. Decodifica pistas complejas como DTS, DTS-HD, AC-3, E-AC-3 (Dolby Digital Plus), TrueHD, Vorbis, Opus y FLAC enviando PCM puro a Oboe.",
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            color = Color.White.copy(alpha = 0.7f),
+                            fontSize = 11.sp,
+                            lineHeight = 15.sp
+                        )
+                    )
+                }
+            }
+
             Spacer(modifier = Modifier.height(28.dp))
         }
     }

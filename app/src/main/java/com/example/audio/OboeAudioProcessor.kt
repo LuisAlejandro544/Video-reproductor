@@ -100,8 +100,8 @@ class OboeAudioProcessor : BaseAudioProcessor() {
     override fun onFlush() {
         try {
             if (currentEngine == AudioEngineType.OBOE) {
-                OboeAudioEngine.stop()
-                OboeAudioEngine.start()
+                // Al adelantar/retroceder o reiniciar, vaciar el búfer inmediatamente sin detener el hardware
+                OboeAudioEngine.flush()
             }
         } catch (e: Throwable) {
             Log.e(TAG, "Error en onFlush de OboeAudioProcessor: ${e.message}")
@@ -110,7 +110,9 @@ class OboeAudioProcessor : BaseAudioProcessor() {
 
     override fun onReset() {
         try {
-            OboeAudioEngine.stop()
+            if (currentEngine == AudioEngineType.OBOE) {
+                OboeAudioEngine.flush()
+            }
         } catch (e: Throwable) {
             Log.e(TAG, "Error en onReset de OboeAudioProcessor: ${e.message}")
         }

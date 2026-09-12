@@ -86,6 +86,17 @@ Java_com_example_audio_OboeAudioEngine_nativeStop(
 }
 
 JNIEXPORT void JNICALL
+Java_com_example_audio_OboeAudioEngine_nativeFlush(
+    JNIEnv* env,
+    jobject /* this */
+) {
+    auto engine = getAudioEngine();
+    if (engine) {
+        engine->flush();
+    }
+}
+
+JNIEXPORT void JNICALL
 Java_com_example_audio_OboeAudioEngine_nativeRelease(
     JNIEnv* env,
     jobject /* this */

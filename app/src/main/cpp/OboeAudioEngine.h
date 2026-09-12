@@ -26,6 +26,7 @@ public:
     bool start();
     bool pause();
     bool stop();
+    void flush();
     void release();
 
     int32_t writeAudioData(const int16_t* audioData, int32_t numSamples);
@@ -72,8 +73,10 @@ private:
     float mVoicePrevLowPass;
 
     std::mutex mBufferMutex;
-    std::vector<int16_t> mAudioBuffer;
+    std::vector<int16_t> mRingBuffer;
+    size_t mWriteIndex;
     size_t mReadIndex;
+    size_t mAvailableSamples;
     int64_t mFramesWritten;
 };
 

@@ -42,6 +42,7 @@ import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Widgets
 import androidx.compose.material.icons.filled.BrightnessLow
 import androidx.compose.material.icons.filled.BrightnessMedium
+import androidx.compose.material.icons.filled.FastForward
 import androidx.compose.material.icons.filled.Forward10
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
@@ -89,6 +90,7 @@ import androidx.compose.ui.input.pointer.changedToUp
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -96,6 +98,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -223,6 +228,7 @@ fun VideoPlayerScreen(
     var sliderScrubbingPosition by remember { mutableFloatStateOf(0f) }
 
     val activity = context as? Activity
+    val view = LocalView.current
     val coroutineScope = rememberCoroutineScope()
 
     // Control de Brillo de Pantalla (0.01f a 1.0f)
@@ -271,6 +277,9 @@ fun VideoPlayerScreen(
     var gestureHideJob by remember { mutableStateOf<Job?>(null) }
     var playbackErrorMessage by remember { mutableStateOf<String?>(null) }
 
+    // Estado del modo de avance rápido a 2X (activado al mantener presionado el lateral derecho)
+    var isFastForwarding2x by remember { mutableStateOf(false) }
+
     // Estado del Sistema de Subtítulos (SRT / WebVTT y pistas embebidas)
     var showSubtitlesSheet by remember { mutableStateOf(false) }
     var subtitlesEnabled by remember { mutableStateOf(true) }
@@ -302,6 +311,12 @@ fun VideoPlayerScreen(
         }
 
         val renderersFactory = object : DefaultRenderersFactory(context) {
+            init {
+                // Habilitar decodificador nativo FFmpeg puro en C/C++ preferentemente para formatos avanzados
+                // (DTS, DTS-HD, AC3, E-AC3, TrueHD, Vorbis, Opus, FLAC) sin wrappers obsoletos
+                setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER)
+            }
+
             override fun buildAudioSink(
                 context: android.content.Context,
                 enableFloatOutput: Boolean,
@@ -332,12 +347,22 @@ fun VideoPlayerScreen(
         }
     }
 
-    // Mantener la pantalla encendida mientras el reproductor está activo y restaurar brillo al salir
+    // Mantener la pantalla encendida y ocultar de forma inmersiva la barra de estado (reloj, notificaciones, batería) y barras del sistema
     DisposableEffect(Unit) {
         val window = activity?.window
         window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
+        // Modo inmersivo completo: ocultar barra de estado y de navegación para visualización limpia del video
+        val insetsController = window?.let { WindowCompat.getInsetsController(it, it.decorView) }
+        insetsController?.apply {
+            systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            hide(WindowInsetsCompat.Type.systemBars())
+        }
+
         onDispose {
+            // Restaurar visibilidad de las barras del sistema al salir del reproductor
+            insetsController?.show(WindowInsetsCompat.Type.systemBars())
+
             window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
             val lp = window?.attributes
             if (lp != null) {
@@ -358,7 +383,7 @@ fun VideoPlayerScreen(
         }
     }
 
-    // Sincronizar ciclo de vida de la actividad (pausar en segundo plano)
+    // Sincronizar ciclo de vida de la actividad (pausar en segundo plano y re-ocultar barras del sistema al volver)
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
@@ -372,6 +397,10 @@ fun VideoPlayerScreen(
                 }
                 Lifecycle.Event.ON_RESUME -> {
                     try {
+                        // Asegurar que las barras del sistema permanezcan ocultas tras reanudar
+                        val insetsCtrl = activity?.window?.let { WindowCompat.getInsetsController(it, it.decorView) }
+                        insetsCtrl?.hide(WindowInsetsCompat.Type.systemBars())
+
                         if (isPlaying) {
                             exoPlayer.play()
                             if (currentAudioEngine == AudioEngineType.OBOE) {
@@ -576,12 +605,13 @@ fun VideoPlayerScreen(
             )
         }
 
-        // Capa interactiva de gestos: toque simple (controles) y deslizamiento vertical (brillo a la izq, volumen a la der)
+        // Capa interactiva de gestos: toque simple (controles), deslizamiento vertical (brillo a la izq, volumen a la der)
+        // y pulsación prolongada en el lateral derecho para avance rápido fluido a 2X
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .testTag("player_gesture_surface")
-                .pointerInput(isControlsLocked) {
+                .pointerInput(isControlsLocked, playbackSpeed) {
                     if (isControlsLocked) {
                         awaitEachGesture {
                             val down = awaitFirstDown(requireUnconsumed = false)
@@ -602,73 +632,123 @@ fun VideoPlayerScreen(
                             var currentY = startY
                             var hasDragged = false
                             val isLeft = startX < (size.width / 2f)
+                            val isRightSide = startX >= (size.width / 2f)
                             val touchSlop = viewConfiguration.touchSlop
 
-                            while (true) {
-                                val event = awaitPointerEvent()
-                                val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                            // Control de estado para Avance Rápido a 2X mediante pulsación prolongada
+                            var isFastForwardActive = false
+                            var wasPlayingBefore2x = false
+                            val configuredSpeed = playbackSpeed
+                            var fastForwardJob: Job? = null
 
-                                if (change.isConsumed) {
-                                    break
-                                }
-
-                                if (change.changedToUp()) {
+                            // En el lateral derecho, programar avance 2X tras 700 ms.
+                            // Tiempo calculado cuidadosamente: balance óptimo de respuesta fluida e inmunidad a toques accidentales.
+                            if (isRightSide) {
+                                fastForwardJob = coroutineScope.launch {
+                                    delay(700)
                                     if (!hasDragged) {
-                                        // Toque simple: alternar visibilidad de los controles
-                                        showControls = !showControls
-                                        lastInteractionTime = System.currentTimeMillis()
-                                    } else {
-                                        // Fin del deslizamiento: desvanecer suavemente el HUD minimalista
-                                        gestureHideJob?.cancel()
-                                        gestureHideJob = coroutineScope.launch {
-                                            delay(1000)
-                                            gestureIndicatorVisible = false
+                                        isFastForwardActive = true
+                                        isFastForwarding2x = true
+                                        wasPlayingBefore2x = exoPlayer.playWhenReady
+                                        if (!wasPlayingBefore2x) {
+                                            exoPlayer.play()
                                         }
+                                        exoPlayer.playbackParameters = PlaybackParameters(2.0f, 1.0f)
+                                        try {
+                                            view.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS)
+                                        } catch (_: Throwable) {}
                                     }
-                                    change.consume()
-                                    break
                                 }
+                            }
 
-                                val totalDx = abs(change.position.x - startX)
-                                val totalDy = abs(change.position.y - startY)
-                                val dragAmountY = change.position.y - currentY
+                            try {
+                                while (true) {
+                                    val event = awaitPointerEvent()
+                                    val change = event.changes.firstOrNull { it.id == down.id } ?: break
 
-                                if (!hasDragged) {
-                                    if (totalDy > touchSlop && totalDy > totalDx) {
-                                        hasDragged = true
+                                    if (change.isConsumed) {
+                                        break
+                                    }
+
+                                    if (change.changedToUp()) {
+                                        fastForwardJob?.cancel()
+                                        if (isFastForwardActive) {
+                                            // El usuario liberó el dedo: restaurar inmediatamente la velocidad configurada
+                                            isFastForwardActive = false
+                                            isFastForwarding2x = false
+                                            exoPlayer.playbackParameters = PlaybackParameters(configuredSpeed, 1.0f)
+                                            if (!wasPlayingBefore2x) {
+                                                exoPlayer.pause()
+                                            }
+                                        } else if (!hasDragged) {
+                                            // Toque simple: alternar visibilidad de los controles
+                                            showControls = !showControls
+                                            lastInteractionTime = System.currentTimeMillis()
+                                        } else {
+                                            // Fin del deslizamiento: desvanecer suavemente el HUD minimalista
+                                            gestureHideJob?.cancel()
+                                            gestureHideJob = coroutineScope.launch {
+                                                delay(1000)
+                                                gestureIndicatorVisible = false
+                                            }
+                                        }
                                         change.consume()
-                                        gestureHideJob?.cancel()
-                                        gestureIndicatorType = if (isLeft) GestureIndicatorType.BRIGHTNESS else GestureIndicatorType.VOLUME
-                                        gestureIndicatorVisible = true
+                                        break
+                                    }
+
+                                    val totalDx = abs(change.position.x - startX)
+                                    val totalDy = abs(change.position.y - startY)
+                                    val dragAmountY = change.position.y - currentY
+
+                                    if (!hasDragged) {
+                                        // Si se inicia arrastre vertical antes de cumplirse el retardo, cancelar avance 2X y activar volumen/brillo
+                                        if (totalDy > touchSlop && totalDy > totalDx && !isFastForwardActive) {
+                                            fastForwardJob?.cancel()
+                                            hasDragged = true
+                                            change.consume()
+                                            gestureHideJob?.cancel()
+                                            gestureIndicatorType = if (isLeft) GestureIndicatorType.BRIGHTNESS else GestureIndicatorType.VOLUME
+                                            gestureIndicatorVisible = true
+                                            currentY = change.position.y
+                                        }
+                                    } else {
+                                        change.consume()
+                                        val delta = -dragAmountY / (size.height.toFloat().coerceAtLeast(1f) * 0.45f)
+                                        if (isLeft) {
+                                            // Mitad izquierda: ajustar brillo de pantalla de la ventana
+                                            currentBrightness = (currentBrightness + delta).coerceIn(0.01f, 1f)
+                                            val window = activity?.window
+                                            if (window != null) {
+                                                val lp = window.attributes
+                                                lp.screenBrightness = currentBrightness
+                                                window.attributes = lp
+                                            }
+                                        } else {
+                                            // Mitad derecha: ajustar volumen multimedia físico del dispositivo
+                                            volumeFraction = (volumeFraction + delta).coerceIn(0f, 1f)
+                                            val targetVol = (volumeFraction * maxVolume).roundToInt().coerceIn(0, maxVolume)
+                                            if (targetVol != currentVolume) {
+                                                currentVolume = targetVol
+                                                audioManager?.setStreamVolume(android.media.AudioManager.STREAM_MUSIC, targetVol, 0)
+                                            }
+                                            if (isMuted && targetVol > 0) {
+                                                isMuted = false
+                                                exoPlayer.volume = 1f
+                                                OboeAudioEngine.setVolume(1f)
+                                            }
+                                        }
                                         currentY = change.position.y
                                     }
-                                } else {
-                                    change.consume()
-                                    val delta = -dragAmountY / (size.height.toFloat().coerceAtLeast(1f) * 0.45f)
-                                    if (isLeft) {
-                                        // Mitad izquierda: ajustar brillo de pantalla de la ventana
-                                        currentBrightness = (currentBrightness + delta).coerceIn(0.01f, 1f)
-                                        val window = activity?.window
-                                        if (window != null) {
-                                            val lp = window.attributes
-                                            lp.screenBrightness = currentBrightness
-                                            window.attributes = lp
-                                        }
-                                    } else {
-                                        // Mitad derecha: ajustar volumen multimedia físico del dispositivo
-                                        volumeFraction = (volumeFraction + delta).coerceIn(0f, 1f)
-                                        val targetVol = (volumeFraction * maxVolume).roundToInt().coerceIn(0, maxVolume)
-                                        if (targetVol != currentVolume) {
-                                            currentVolume = targetVol
-                                            audioManager?.setStreamVolume(android.media.AudioManager.STREAM_MUSIC, targetVol, 0)
-                                        }
-                                        if (isMuted && targetVol > 0) {
-                                            isMuted = false
-                                            exoPlayer.volume = 1f
-                                            OboeAudioEngine.setVolume(1f)
-                                        }
+                                }
+                            } finally {
+                                fastForwardJob?.cancel()
+                                if (isFastForwardActive) {
+                                    isFastForwardActive = false
+                                    isFastForwarding2x = false
+                                    exoPlayer.playbackParameters = PlaybackParameters(configuredSpeed, 1.0f)
+                                    if (!wasPlayingBefore2x) {
+                                        exoPlayer.pause()
                                     }
-                                    currentY = change.position.y
                                 }
                             }
                         }
@@ -753,6 +833,51 @@ fun VideoPlayerScreen(
                     type = type,
                     fraction = fraction
                 )
+            }
+        }
+
+        // Indicador HUD flotante para Avance Rápido a 2X al mantener presionado el lateral derecho
+        AnimatedVisibility(
+            visible = isFastForwarding2x,
+            enter = fadeIn(tween(150)) + scaleIn(tween(150), initialScale = 0.88f),
+            exit = fadeOut(tween(250)),
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .padding(top = 36.dp)
+                .testTag("player_fast_forward_2x_badge")
+        ) {
+            Surface(
+                shape = RoundedCornerShape(20.dp),
+                color = Color(0xFF0F172A).copy(alpha = 0.90f),
+                border = BorderStroke(1.dp, Color(0xFF38BDF8).copy(alpha = 0.75f)),
+                shadowElevation = 8.dp
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.FastForward,
+                        contentDescription = "Avance rápido 2X",
+                        tint = Color(0xFF38BDF8),
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Text(
+                        text = "2X",
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
+                    )
+                    Text(
+                        text = "Avance Rápido",
+                        style = MaterialTheme.typography.labelMedium.copy(
+                            color = Color(0xFF94A3B8),
+                            fontWeight = FontWeight.Medium
+                        )
+                    )
+                }
             }
         }
 

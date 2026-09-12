@@ -89,7 +89,14 @@
 - **Importación Dual de Medios:**
   - **Galería Multimedia (Android Photo Picker):** Selección visual rápida sin necesidad de permisos invasivos.
   - **Gestor de Archivos Nativo (Storage Access Framework):** Exploración completa de directorios internos, descargas y tarjetas MicroSD.
-- **Controles Multimedia Profesionales (Estilo PC) y Gestos Táctiles:**
+- **Controles Multimedia Profesionales (Estilo PC) y Gestos Táctiles Avanzados:**
+  - **Modo Inmersivo Automático (Sin Distracciones):**
+    - Al reproducir un video, la barra de estado del sistema (reloj, notificaciones, batería) y la barra de navegación desaparecen por completo de la pantalla mediante `WindowInsetsControllerCompat`.
+    - La experiencia visual aprovecha el 100% de la pantalla de borde a borde (Edge-to-Edge), eliminando elementos molestos mientras se disfruta del contenido.
+  - **Gesto de Avance Rápido a 2X (Pulsación Prolongada en Lateral Derecho):**
+    - Mantener presionado el lado derecho de la pantalla por aproximadamente 700 ms activa instantáneamente la reproducción rápida a **2X** con respuesta háptica y un badge flotante HUD estilizado.
+    - Al levantar el dedo, la reproducción vuelve de forma inmediata y suave a la velocidad configurada previamente por el usuario (sin desfasar audio ni controles).
+    - Cálculo calibrado para evitar toques accidentales y compatibilidad fluida con el control de volumen por deslizamiento vertical.
   - **Gestos Táctiles con HUD Minimalista:**
     - **Lado Izquierdo (Deslizar vertical):** Control dinámico y directo del brillo de pantalla (1% a 100%).
     - **Lado Derecho (Deslizar vertical):** Control en tiempo real del volumen multimedia físico del dispositivo.
@@ -100,6 +107,11 @@
   - Silenciado rápido y control dinámico de volumen.
   - Ocultamiento inteligente de controles tras inactividad táctil.
   - Persistencia de pantalla encendida (*Keep Screen On*) durante la reproducción y restauración automática del brillo al salir.
+- **Motor de Audio Nativo Oboe Optimizado y Soporte FFmpeg Puro:**
+  - **Búfer Circular Estático en C++:** Sustitución de asignaciones dinámicas por un búfer de anillo estático con punteros atómicos para erradicar microcortes y latencias al buscar (seek) o reanudar.
+  - **Vaciado Instantáneo (`flush`):** Limpieza inmediata de colas de audio nativas sin detener ni recrear el flujo de hardware de AAudio / OpenSL ES.
+  - **Decodificador FFmpeg Nativo Puro Integrado:** Soporte extendido para pistas de audio complejas de alta fidelidad (AC-3, E-AC-3, DTS, DTS-HD, TrueHD, FLAC, ALAC, Opus y Vorbis) sin wrappers obsoletos.
+  - **Compensación de Ganancia Perceptual (1.40x):** Nivel de volumen equiparado al estándar de AudioTrack para una audición potente y sin pérdidas.
 - **Pantalla Independiente de Configuración y Telemetría:**
   - Pantalla dedicada y desacoplada de diálogos o tarjetas flotantes emergentes.
   - Alternancia 100% real en caliente entre el motor C++ (Google Oboe con AAudio/OpenSL ES) y Android Media3 (AudioTrack).

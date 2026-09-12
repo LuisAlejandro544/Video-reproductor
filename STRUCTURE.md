@@ -34,19 +34,19 @@ Este documento detalla la organización de carpetas, responsabilidades de cada m
 │       │   │
 │       │   ├── cpp/                  # Capa Nativa C++ (Audio Oboe y OpenGL ES Shaders)
 │       │   │   ├── CMakeLists.txt    # Script de compilación CMake (enlaza Oboe, GLESv2, EGL, log)
-│       │   │   ├── native-lib.cpp    # Puntos de entrada JNI (puente hacia Kotlin)
-│       │   │   ├── OboeAudioEngine.h # Declaración de la clase del motor de audio Oboe con DSP (Compresor DRC y Voces Claras)
-│       │   │   ├── OboeAudioEngine.cpp # Implementación nativa de flujos AAudio/OpenSL ES y filtros DSP en tiempo real
+│       │   │   ├── native-lib.cpp    # Puntos de entrada JNI (puente hacia Kotlin con nativeFlush)
+│       │   │   ├── OboeAudioEngine.h # Declaración de la clase del motor de audio Oboe (búfer circular estático, flush() y DSP)
+│       │   │   ├── OboeAudioEngine.cpp # Implementación nativa con búfer de anillo estático, vaciado atómico instantáneo y filtros DSP
 │       │   │   ├── VideoColorEngine.h # Declaración del motor de sombreadores OpenGL ES (incluye uniform uSunMode)
 │       │   │   └── VideoColorEngine.cpp # Shaders GLSL, texturizado OES, matriz de color, nitidez, descanso visual, modo sol extremo, desenfoque pillarbox y AMD FSR 1.0 (EASU + RCAS)
 │       │   │
 │       │   ├── java/com/example/     # Código fuente Kotlin (UI y Lógica)
 │       │   │   ├── MainActivity.kt   # Actividad raíz y enrutador de pantallas
 │       │   │   │
-│       │   │   ├── audio/            # Capa de integración de audio nativo
+│       │   │   ├── audio/            # Capa de integración de audio nativo y decodificación FFmpeg
 │       │   │   │   ├── AudioEngineType.kt     # Enum: OBOE vs MEDIA3
-│       │   │   │   ├── OboeAudioEngine.kt     # Wrapper JNI de control del motor C++ (volumen, compresor DRC y voces claras)
-│       │   │   │   └── OboeAudioProcessor.kt  # Interceptor PCM de Media3 hacia Oboe
+│       │   │   │   ├── OboeAudioEngine.kt     # Wrapper JNI con flush() y control de volumen/DSP nativo
+│       │   │   │   └── OboeAudioProcessor.kt  # Interceptor PCM de Media3 hacia Oboe con vaciado sincronizado en onFlush/onReset
 │       │   │   │
 │       │   │   ├── opengl/           # Capa de renderizado acelerado por GPU
 │       │   │   │   ├── NativeVideoFilter.kt   # Puente JNI con VideoColorEngine en C++
@@ -79,7 +79,7 @@ Este documento detalla la organización de carpetas, responsabilidades de cada m
 │       │   │   │   ├── SunModeSheet.kt        # Pantalla exclusiva e independiente de Modo Sol Extremo y Accesibilidad en GPU
 │       │   │   │   ├── VideoEqualizerSheet.kt # Pantalla exclusiva e independiente de ecualización de video (color, nitidez, descanso)
 │       │   │   │   ├── VideoImportScreen.kt   # Pantalla interactiva: biblioteca de importados, duración, progreso y selectores
-│       │   │   │   ├── VideoPlayerScreen.kt   # Pantalla de reproducción multimedia con OpenGL, gestos, HUD y SubtitleView
+│       │   │   │   ├── VideoPlayerScreen.kt   # Pantalla de reproducción multimedia (OpenGL, modo inmersivo sin barra de estado, avance rápido 2X, gestos, HUD y subtítulos)
 │       │   │   │   ├── VideoSourceDialog.kt   # Diálogo para alternar Galería / Gestor de archivos
 │       │   │   │   ├── VoiceNightAudioSheet.kt # Pantalla exclusiva e independiente de Compresor Dinámico y Voces Claras en C++
 │       │   │   │   └── theme/                 # Paleta de colores, tipografía y tema oscuro

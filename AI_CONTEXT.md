@@ -71,12 +71,29 @@ Este archivo proporciona el contexto técnico, arquitectónico y operativo neces
 - `VideoUtils.resolveVideoMetadata` y `VideoUtils.getVideoDurationMs` utilizan `MediaMetadataRetriever` para calcular la duración exacta del video en milisegundos y formatearla a `mm:ss` o `hh:mm:ss`.
 - `VideoPlayerScreen` informa periódicamente el progreso (`currentPositionMs` y `totalDurationMs`), actualizando la base de datos para mostrar barras de avance y permitir reanudación instantánea con un toque desde la pantalla principal (`VideoImportScreen`).
 
-### 6. Sistema de Gestos Táctiles y HUD Minimalista
+### 6. Sistema de Gestos Táctiles, Avance Rápido a 2X y Modo Inmersivo
+- **Modo Inmersivo Automático (Edge-to-Edge Sin Distracciones):**
+  - Implementado mediante `WindowInsetsControllerCompat` y `WindowInsetsCompat.Type.systemBars()` con `systemBarsBehavior = BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE`.
+  - Oculta de forma transparente la barra de estado (reloj, nivel de batería, notificaciones) y la barra de navegación del sistema durante la reproducción de video.
+  - Se reactiva de forma persistente en `Lifecycle.Event.ON_RESUME` y se restaura limpia y automáticamente en el bloque `onDispose` al salir del reproductor.
+- **Gesto de Avance Rápido a 2X (Press & Hold en Lateral Derecho):**
+  - Al pulsar y mantener presionado el lateral derecho (`startX >= size.width / 2f`), una corrutina programa la aceleración a 2.0x tras 700 ms.
+  - **Sensibilidad y Fluidez:** Este retardo de 700 ms evita falsos positivos por toques accidentales o el inicio de un arrastre vertical para regular el volumen físico.
+  - Si el usuario inicia un desplazamiento vertical antes de cumplirse el retardo (`totalDy > touchSlop`), el avance rápido se cancela y se delega el control al volumen.
+  - Al cumplirse el tiempo, se emite vibración táctil háptica (`HapticFeedbackConstants.LONG_PRESS`), se muestra un HUD flotante estilizado con distintivo `2X Avance Rápido` (`player_fast_forward_2x_badge`) y se eleva la velocidad mediante `PlaybackParameters(2.0f, 1.0f)`.
+  - Al levantar el dedo (`changedToUp()`) o ante cualquier interrupción (`finally`), la velocidad se restaura fiel e instantáneamente a la configurada por el usuario (`playbackSpeed`).
 - **Detección Directa y Desacoplada (`pointerInput` con `awaitEachGesture`):**
   - Se utiliza una capa interactiva sobre la vista de video nativa para discriminar toques simples de arrastres verticales sin colisiones de eventos.
   - **Mitad Izquierda del Canvas:** Ajusta progresivamente el brillo de pantalla de la ventana (`WindowManager.LayoutParams.screenBrightness`) en un rango de `0.01f` a `1.0f`. Al salir de la pantalla o cerrar el reproductor, se restaura automáticamente el valor predeterminado del sistema (`BRIGHTNESS_OVERRIDE_NONE`).
   - **Mitad Derecha del Canvas:** Modifica directamente el volumen físico multimedia del dispositivo (`AudioManager.STREAM_MUSIC`), sincronizando el estado con el reproductor y reactivando el audio si se encontraba silenciado.
   - **Indicador Flotante Minimalista (`MinimalistGestureIndicator`):** Cápsula elegante que aparece flotando en el lateral activo exclusivamente mientras se realiza el gesto (`AnimatedVisibility` con `fadeIn` y `scaleIn`). Incorpora icono dinámico contextual (según tramos de volumen/brillo), barra vertical graduada con gradiente y porcentaje numérico. Se desvanece suavemente 1 segundo después de finalizar el gesto.
+
+### 6.1. Motor Oboe Optimizado con Búfer Circular y Decodificadores FFmpeg Puros
+- **Búfer de Anillo Estático en C++:** Sustitución de asignaciones dinámicas `std::vector` por un búfer estático preasignado de 192.000 muestras (`kRingBufferSize`). Los punteros atómicos de lectura y escritura (`std::atomic<size_t>`) eliminan la contención de memoria en el hilo de audio en tiempo real de AAudio.
+- **Vaciado Atómico Instantáneo (`nativeFlush` / `OboeAudioEngine::flush`):** Limpia las tramas pendientes en el búfer circular sin necesidad de detener y reiniciar el stream de hardware, eliminando el congelamiento de audio durante el avance, retroceso (seek) o repetición en bucle de videos.
+- **Configuración de Flujo Oboe:** Uso de `oboe::Usage::Media` y `oboe::ContentType::Movie` para enrutamiento idéntico al subsistema multimedia de Android.
+- **Compensación de Ganancia Perceptual:** Factor de amplificación limpia de 1.40x para nivelar la presión sonora de Oboe con el estándar de `AudioTrack`.
+- **Integración de Decodificadores FFmpeg Puros:** Integración directa de `org.jellyfin.media3:media3-ffmpeg-decoder` configurado en `DefaultRenderersFactory` con `EXTENSION_RENDERER_MODE_PREFER` para soporte universal de codecs de audio (AC-3, E-AC-3, DTS, TrueHD, FLAC, Opus).
 
 ### 7. Pipeline de Video Acelerado por GPU con OpenGL ES y C++
 - **Motor Nativo `VideoColorEngine` (C++17):**

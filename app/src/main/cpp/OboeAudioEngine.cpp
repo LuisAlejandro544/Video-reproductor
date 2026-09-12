@@ -8,8 +8,9 @@
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
 #define LOGW(...) __android_log_print(ANDROID_LOG_WARN, LOG_TAG, __VA_ARGS__)
 
-// Tamaño máximo del buffer de audio interno (aproximadamente 500ms de audio estéreo a 48kHz)
-static constexpr size_t MAX_BUFFER_SAMPLES = 48000 * 2;
+// Tamaño del buffer circular estático (~2 segundos de audio estéreo a 48kHz = 192,000 muestras = 384 KB)
+// Garantiza cero reasignaciones de memoria en tiempo de reproducción y absorbe ráfagas de decodificación
+static constexpr size_t RING_BUFFER_CAPACITY = 48000 * 2 * 2;
 
 OboeAudioEngine::OboeAudioEngine()
     : mSampleRate(48000)
@@ -22,9 +23,11 @@ OboeAudioEngine::OboeAudioEngine()
     , mVoiceClarityGain(0.75f)
     , mEnvelope(0.0f)
     , mVoicePrevLowPass(0.0f)
+    , mWriteIndex(0)
     , mReadIndex(0)
+    , mAvailableSamples(0)
     , mFramesWritten(0) {
-    mAudioBuffer.reserve(MAX_BUFFER_SAMPLES);
+    mRingBuffer.assign(RING_BUFFER_CAPACITY, 0);
 }
 
 OboeAudioEngine::~OboeAudioEngine() {
@@ -41,8 +44,9 @@ bool OboeAudioEngine::init(int32_t sampleRate, int32_t channelCount) {
         mChannelCount = channelCount;
     }
 
-    mAudioBuffer.clear();
+    mWriteIndex = 0;
     mReadIndex = 0;
+    mAvailableSamples = 0;
     mFramesWritten = 0;
 
     LOGI("Inicializando OboeAudioEngine - SampleRate: %d, Canales: %d", mSampleRate, mChannelCount);
@@ -56,6 +60,8 @@ bool OboeAudioEngine::openStream() {
     builder.setDirection(oboe::Direction::Output)
         ->setPerformanceMode(oboe::PerformanceMode::LowLatency)
         ->setSharingMode(oboe::SharingMode::Shared)
+        ->setUsage(oboe::Usage::Media)
+        ->setContentType(oboe::ContentType::Movie)
         ->setFormat(oboe::AudioFormat::I16)
         ->setChannelCount(mChannelCount)
         ->setSampleRate(mSampleRate)
@@ -67,7 +73,7 @@ bool OboeAudioEngine::openStream() {
         return false;
     }
 
-    LOGI("Flujo Oboe abierto exitosamente. API usada: %s, FramesPerBurst: %d",
+    LOGI("Flujo Oboe abierto exitosamente. API: %s, FramesPerBurst: %d, Usage: Media, ContentType: Movie",
          getAudioApiName().c_str(), mStream->getFramesPerBurst());
     return true;
 }
@@ -85,6 +91,12 @@ bool OboeAudioEngine::start() {
         if (!openStream()) return false;
     }
     
+    oboe::StreamState state = mStream->getState();
+    if (state == oboe::StreamState::Started) {
+        mIsPlaying = true;
+        return true;
+    }
+
     oboe::Result result = mStream->requestStart();
     if (result == oboe::Result::OK) {
         mIsPlaying = true;
@@ -106,10 +118,19 @@ bool OboeAudioEngine::pause() {
     return true;
 }
 
+void OboeAudioEngine::flush() {
+    std::lock_guard<std::mutex> lock(mBufferMutex);
+    mWriteIndex = 0;
+    mReadIndex = 0;
+    mAvailableSamples = 0;
+    LOGI("Flujo Oboe: buffer vaciado (flush) instantáneamente sin detener hardware.");
+}
+
 bool OboeAudioEngine::stop() {
     std::lock_guard<std::mutex> lock(mBufferMutex);
-    mAudioBuffer.clear();
+    mWriteIndex = 0;
     mReadIndex = 0;
+    mAvailableSamples = 0;
     
     if (mStream) {
         oboe::Result result = mStream->requestStop();
@@ -124,8 +145,9 @@ void OboeAudioEngine::release() {
     stop();
     closeStream();
     std::lock_guard<std::mutex> lock(mBufferMutex);
-    mAudioBuffer.clear();
+    mWriteIndex = 0;
     mReadIndex = 0;
+    mAvailableSamples = 0;
 }
 
 int32_t OboeAudioEngine::writeAudioData(const int16_t* audioData, int32_t numSamples) {
@@ -135,26 +157,15 @@ int32_t OboeAudioEngine::writeAudioData(const int16_t* audioData, int32_t numSam
 
     std::lock_guard<std::mutex> lock(mBufferMutex);
 
-    // Si el índice de lectura avanzó, compactamos el buffer para no consumir memoria infinita
-    if (mReadIndex > 0) {
-        if (mReadIndex >= mAudioBuffer.size()) {
-            mAudioBuffer.clear();
-            mReadIndex = 0;
-        } else if (mReadIndex > 8192) {
-            mAudioBuffer.erase(mAudioBuffer.begin(), mAudioBuffer.begin() + mReadIndex);
-            mReadIndex = 0;
-        }
-    }
+    size_t freeSpace = (RING_BUFFER_CAPACITY > mAvailableSamples) ? (RING_BUFFER_CAPACITY - mAvailableSamples) : 0;
+    size_t samplesToInsert = std::min(static_cast<size_t>(numSamples), freeSpace);
 
-    // Limitar el buffer para evitar sobrellenado durante saltos o pausas prolongadas
-    size_t availableCapacity = MAX_BUFFER_SAMPLES > mAudioBuffer.size() ?
-                               MAX_BUFFER_SAMPLES - mAudioBuffer.size() : 0;
-    size_t samplesToInsert = std::min(static_cast<size_t>(numSamples), availableCapacity);
-
-    if (samplesToInsert > 0) {
-        mAudioBuffer.insert(mAudioBuffer.end(), audioData, audioData + samplesToInsert);
-        mFramesWritten += (samplesToInsert / mChannelCount);
+    for (size_t i = 0; i < samplesToInsert; ++i) {
+        mRingBuffer[(mWriteIndex + i) % RING_BUFFER_CAPACITY] = audioData[i];
     }
+    mWriteIndex = (mWriteIndex + samplesToInsert) % RING_BUFFER_CAPACITY;
+    mAvailableSamples += samplesToInsert;
+    mFramesWritten += (samplesToInsert / mChannelCount);
 
     return static_cast<int32_t>(samplesToInsert);
 }
@@ -215,11 +226,14 @@ oboe::DataCallbackResult OboeAudioEngine::onAudioReady(
 
     std::lock_guard<std::mutex> lock(mBufferMutex);
 
-    size_t samplesAvailable = (mAudioBuffer.size() > mReadIndex) ? (mAudioBuffer.size() - mReadIndex) : 0;
-    size_t samplesToCopy = std::min(static_cast<size_t>(totalSamplesNeeded), samplesAvailable);
+    size_t samplesToCopy = std::min(static_cast<size_t>(totalSamplesNeeded), mAvailableSamples);
+
+    // Compensación de volumen maestro (1.40f) para igualar sonoridad con AudioTrack de Media3
+    const float masterGain = mVolume * 1.40f;
 
     for (size_t i = 0; i < samplesToCopy; ++i) {
-        float sample = static_cast<float>(mAudioBuffer[mReadIndex + i]) * mVolume;
+        int16_t rawSample = mRingBuffer[(mReadIndex + i) % RING_BUFFER_CAPACITY];
+        float sample = static_cast<float>(rawSample) * masterGain;
 
         // 1. Realce de Diálogos / Voces Claras (Peaking en banda vocal 1.5 kHz - 3.5 kHz)
         if (mVoiceClarityEnabled && mVoiceClarityGain > 0.01f) {
@@ -251,11 +265,12 @@ oboe::DataCallbackResult OboeAudioEngine::onAudioReady(
             }
         }
 
-        // Clamp a 16-bit signed integer
-        sample = std::max(-32768.0f, std::min(32767.0f, sample));
+        // Clamp a 16-bit signed integer con protección suave contra distorsión
+        sample = std::max(-32767.0f, std::min(32767.0f, sample));
         outputBuffer[i] = static_cast<int16_t>(sample);
     }
-    mReadIndex += samplesToCopy;
+    mReadIndex = (mReadIndex + samplesToCopy) % RING_BUFFER_CAPACITY;
+    mAvailableSamples -= samplesToCopy;
 
     // Si faltan muestras para completar el frame requerido por el hardware, rellenar con silencio
     if (samplesToCopy < static_cast<size_t>(totalSamplesNeeded)) {

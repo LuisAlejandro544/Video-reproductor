@@ -36,4 +36,23 @@ class ExampleUnitTest {
     fun aspectRatioModes_areDefined() {
         assertEquals(3, AspectRatioMode.values().size)
     }
+
+    @Test
+    fun oboeAudioProcessor_configuresAndFlushesSafely() {
+        val processor = com.example.audio.OboeAudioProcessor()
+        processor.setEngine(AudioEngineType.OBOE)
+        assertEquals(AudioEngineType.OBOE, processor.getCurrentEngine())
+
+        // Configuración de formato PCM 48kHz estéreo 16-bit
+        val inputFormat = androidx.media3.common.audio.AudioProcessor.AudioFormat(
+            48000, 2, androidx.media3.common.C.ENCODING_PCM_16BIT
+        )
+        val outputFormat = processor.configure(inputFormat)
+        assertEquals(inputFormat.sampleRate, outputFormat.sampleRate)
+        assertEquals(inputFormat.channelCount, outputFormat.channelCount)
+
+        // flush no debe lanzar excepciones
+        processor.flush()
+        processor.reset()
+    }
 }

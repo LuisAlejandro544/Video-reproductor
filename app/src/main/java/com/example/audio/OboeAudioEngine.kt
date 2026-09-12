@@ -71,6 +71,20 @@ object OboeAudioEngine {
         }
     }
 
+    /**
+     * Vacía el búfer de muestras PCM de forma instantánea sin detener el flujo de hardware.
+     * Esencial al adelantar o retroceder (seek), o al reiniciar reproducción, para evitar
+     * bloqueos asíncronos o retrasos de audio.
+     */
+    fun flush() {
+        if (!isLibraryLoaded) return
+        try {
+            nativeFlush()
+        } catch (e: Exception) {
+            Log.e(TAG, "Excepción en nativeFlush", e)
+        }
+    }
+
     fun release() {
         if (!isLibraryLoaded) return
         try {
@@ -177,6 +191,7 @@ object OboeAudioEngine {
     private external fun nativeStart(): Boolean
     private external fun nativePause(): Boolean
     private external fun nativeStop(): Boolean
+    private external fun nativeFlush()
     private external fun nativeRelease()
     private external fun nativeWrite(buffer: ByteArray, offset: Int, length: Int): Int
     private external fun nativeSetVolume(volume: Float)

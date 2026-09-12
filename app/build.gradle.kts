@@ -106,6 +106,7 @@ dependencies {
   implementation(libs.androidx.media3.exoplayer)
   implementation(libs.androidx.media3.ui)
   implementation(libs.androidx.media3.common)
+  implementation(libs.media3.ffmpeg.decoder)
   implementation(libs.google.oboe)
 
   implementation(libs.androidx.lifecycle.runtime.compose)
