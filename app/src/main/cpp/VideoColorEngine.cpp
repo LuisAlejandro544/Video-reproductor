@@ -55,18 +55,93 @@ R"glsl(
     uniform samplerExternalOES sTexture;
 
     // Uniforms de ajuste en tiempo real
-    uniform float uBrightness;  // Rango: [-0.5, 0.5] (0.0 = neutro)
-    uniform float uContrast;    // Rango: [0.5, 2.0]  (1.0 = neutro)
-    uniform float uSaturation;  // Rango: [0.0, 2.0]  (1.0 = neutro)
-    uniform float uGamma;       // Rango: [0.5, 2.0]  (1.0 = neutro)
-    uniform float uSharpness;   // Rango: [0.0, 1.5]  (0.0 = desactivado)
-    uniform vec2 uTexelStep;    // Tamaño inverso del frame (1.0/ancho, 1.0/alto)
+    uniform float uBrightness;       // Rango: [-0.5, 0.5] (0.0 = neutro)
+    uniform float uContrast;         // Rango: [0.5, 2.0]  (1.0 = neutro)
+    uniform float uSaturation;       // Rango: [0.0, 2.0]  (1.0 = neutro)
+    uniform float uGamma;            // Rango: [0.5, 2.0]  (1.0 = neutro)
+    uniform float uSharpness;        // Rango: [0.0, 1.5]  (0.0 = desactivado)
+    uniform vec2 uTexelStep;         // Tamaño inverso del frame (1.0/ancho, 1.0/alto)
+    uniform float uBlueLightFilter;  // Rango: [0.0, 1.0]  (0.0 = desactivado, 1.0 = descanso visual máximo)
+    uniform float uBlurRadius;       // Rango: [0.0, 20.0] (radio de desenfoque para pillarbox)
+    uniform float uBackgroundDim;    // Rango: [0.0, 1.0]  (atenuación de luminosidad para fondo)
+    uniform float uFsrEnabled;       // 0.0 = desactivado, 1.0 = AMD FSR 1.0 activado
+    uniform float uFsrSharpness;     // Rango: [0.0, 1.0]  (Afilado adaptativo al contraste RCAS)
 
     void main() {
         vec4 color = texture2D(sTexture, vTextureCoord);
 
-        // 1. Filtro de Nitidez (Kernel de convolución Laplaciano 3x3)
-        if (uSharpness > 0.01) {
+        // 1. Desenfoque de fondo Gaussiano de 9 toques (Pillarbox Blur)
+        if (uBlurRadius > 0.5) {
+            vec2 step = uTexelStep * uBlurRadius;
+            vec4 blurSum = color * 0.227027;
+            blurSum += texture2D(sTexture, vTextureCoord + vec2(-step.x, -step.y)) * 0.070270;
+            blurSum += texture2D(sTexture, vTextureCoord + vec2(0.0,     -step.y)) * 0.121621;
+            blurSum += texture2D(sTexture, vTextureCoord + vec2(step.x,  -step.y)) * 0.070270;
+            blurSum += texture2D(sTexture, vTextureCoord + vec2(-step.x,  0.0))    * 0.121621;
+            blurSum += texture2D(sTexture, vTextureCoord + vec2(step.x,   0.0))    * 0.121621;
+            blurSum += texture2D(sTexture, vTextureCoord + vec2(-step.x,  step.y)) * 0.070270;
+            blurSum += texture2D(sTexture, vTextureCoord + vec2(0.0,      step.y)) * 0.121621;
+            blurSum += texture2D(sTexture, vTextureCoord + vec2(step.x,   step.y)) * 0.070270;
+            color = blurSum;
+
+            if (uBackgroundDim > 0.01) {
+                color.rgb *= (1.0 - uBackgroundDim);
+            }
+        }
+        // 2. AMD FidelityFX Super Resolution 1.0 (EASU + RCAS)
+        else if (uFsrEnabled > 0.5) {
+            vec2 st = uTexelStep;
+            vec4 c  = color;
+            vec4 n  = texture2D(sTexture, vTextureCoord + vec2(0.0,  -st.y));
+            vec4 s  = texture2D(sTexture, vTextureCoord + vec2(0.0,   st.y));
+            vec4 e  = texture2D(sTexture, vTextureCoord + vec2( st.x, 0.0));
+            vec4 w  = texture2D(sTexture, vTextureCoord + vec2(-st.x, 0.0));
+
+            vec4 nw = texture2D(sTexture, vTextureCoord + vec2(-st.x, -st.y));
+            vec4 ne = texture2D(sTexture, vTextureCoord + vec2( st.x, -st.y));
+            vec4 sw = texture2D(sTexture, vTextureCoord + vec2(-st.x,  st.y));
+            vec4 se = texture2D(sTexture, vTextureCoord + vec2( st.x,  st.y));
+
+            // FSR Fase 1: EASU (Edge-Adaptive Spatial Upsampling)
+            // Análisis de gradiente direccional con luminancia Rec. 709
+            float lumaC  = dot(c.rgb,  vec3(0.2126, 0.7152, 0.0722));
+            float lumaN  = dot(n.rgb,  vec3(0.2126, 0.7152, 0.0722));
+            float lumaS  = dot(s.rgb,  vec3(0.2126, 0.7152, 0.0722));
+            float lumaE  = dot(e.rgb,  vec3(0.2126, 0.7152, 0.0722));
+            float lumaW  = dot(w.rgb,  vec3(0.2126, 0.7152, 0.0722));
+            float lumaNW = dot(nw.rgb, vec3(0.2126, 0.7152, 0.0722));
+            float lumaNE = dot(ne.rgb, vec3(0.2126, 0.7152, 0.0722));
+            float lumaSW = dot(sw.rgb, vec3(0.2126, 0.7152, 0.0722));
+            float lumaSE = dot(se.rgb, vec3(0.2126, 0.7152, 0.0722));
+
+            // Operador direccional de borde
+            float gradX = (lumaNE + 2.0 * lumaE + lumaSE) - (lumaNW + 2.0 * lumaW + lumaSW);
+            float gradY = (lumaSW + 2.0 * lumaS + lumaSE) - (lumaNW + 2.0 * lumaN + lumaNE);
+            float edgeMag = length(vec2(gradX, gradY));
+
+            vec4 easuColor = c;
+            if (edgeMag > 0.015) {
+                vec2 dir = normalize(vec2(gradX, gradY));
+                vec2 tangentStep = vec2(-dir.y, dir.x) * st;
+                vec4 sPos = texture2D(sTexture, vTextureCoord + tangentStep);
+                vec4 sNeg = texture2D(sTexture, vTextureCoord - tangentStep);
+                easuColor = mix(c, 0.5 * (sPos + sNeg), clamp(edgeMag * 1.6, 0.0, 0.85));
+            }
+
+            // FSR Fase 2: RCAS (Robust Contrast-Adaptive Sharpening)
+            // Acotamiento estricto a los valores del vecindario para evitar ringing y artefactos
+            vec4 minRing = min(c, min(min(n, s), min(e, w)));
+            vec4 maxRing = max(c, max(max(n, s), max(e, w)));
+
+            float sharpnessFactor = clamp(uFsrSharpness, 0.0, 1.0);
+            float peak = -1.0 / mix(8.0, 3.5, sharpnessFactor);
+            vec4 rcasColor = (n + s + e + w) * peak + easuColor;
+            rcasColor /= (4.0 * peak + 1.0);
+
+            color = clamp(rcasColor, minRing, maxRing);
+        }
+        // 3. Filtro de Nitidez Tradicional (Kernel Laplaciano 3x3)
+        else if (uSharpness > 0.01) {
             vec4 north = texture2D(sTexture, vTextureCoord + vec2(0.0, uTexelStep.y));
             vec4 south = texture2D(sTexture, vTextureCoord - vec2(0.0, uTexelStep.y));
             vec4 east  = texture2D(sTexture, vTextureCoord + vec2(uTexelStep.x, 0.0));
@@ -75,20 +150,28 @@ R"glsl(
             color = clamp(color * (1.0 + 4.0 * uSharpness) - neighbors * uSharpness, 0.0, 1.0);
         }
 
-        // 2. Ajuste de Brillo
+        // 3. Ajuste de Brillo
         color.rgb += uBrightness;
 
-        // 3. Ajuste de Contraste con punto pivote en 0.5
+        // 4. Ajuste de Contraste con punto pivote en 0.5
         color.rgb = (color.rgb - 0.5) * uContrast + 0.5;
 
-        // 4. Ajuste de Saturación de color (Luminancia Rec. 709)
+        // 5. Ajuste de Saturación de color (Luminancia Rec. 709)
         float luma = dot(color.rgb, vec3(0.2126, 0.7152, 0.0722));
         color.rgb = mix(vec3(luma), color.rgb, uSaturation);
 
-        // 5. Corrección Gamma para rango dinámico perceptual
+        // 6. Corrección Gamma para rango dinámico perceptual
         color.rgb = clamp(color.rgb, 0.0, 1.0);
         if (uGamma > 0.01 && abs(uGamma - 1.0) > 0.01) {
             color.rgb = pow(color.rgb, vec3(1.0 / max(uGamma, 0.01)));
+        }
+
+        // 7. Filtro de Luz Azul / Modo Descanso Visual (Eye Comfort)
+        if (uBlueLightFilter > 0.01) {
+            color.b *= (1.0 - uBlueLightFilter * 0.45);
+            color.r *= (1.0 + uBlueLightFilter * 0.10);
+            color.g *= (1.0 + uBlueLightFilter * 0.03);
+            color.rgb = clamp(color.rgb, 0.0, 1.0);
         }
 
         // Asegurar opacidad total para evitar que frames con alfa nulo decodificados por hardware se vean negros
@@ -108,7 +191,12 @@ VideoColorEngine::VideoColorEngine()
       muSaturationHandle(-1),
       muGammaHandle(-1),
       muSharpnessHandle(-1),
-      muTexelStepHandle(-1) {
+      muTexelStepHandle(-1),
+      muBlueLightFilterHandle(-1),
+      muBlurRadiusHandle(-1),
+      muBackgroundDimHandle(-1),
+      muFsrEnabledHandle(-1),
+      muFsrSharpnessHandle(-1) {
 }
 
 VideoColorEngine::~VideoColorEngine() {
@@ -212,6 +300,11 @@ bool VideoColorEngine::init() {
     muGammaHandle        = glGetUniformLocation(mProgram, "uGamma");
     muSharpnessHandle    = glGetUniformLocation(mProgram, "uSharpness");
     muTexelStepHandle    = glGetUniformLocation(mProgram, "uTexelStep");
+    muBlueLightFilterHandle = glGetUniformLocation(mProgram, "uBlueLightFilter");
+    muBlurRadiusHandle   = glGetUniformLocation(mProgram, "uBlurRadius");
+    muBackgroundDimHandle= glGetUniformLocation(mProgram, "uBackgroundDim");
+    muFsrEnabledHandle   = glGetUniformLocation(mProgram, "uFsrEnabled");
+    muFsrSharpnessHandle = glGetUniformLocation(mProgram, "uFsrSharpness");
 
     LOGI("VideoColorEngine inicializado exitosamente en OpenGL ES.");
     return true;
@@ -227,7 +320,12 @@ bool VideoColorEngine::render(
     float gamma,
     float sharpness,
     float texWidth,
-    float texHeight
+    float texHeight,
+    float blueLightFilter,
+    float blurRadius,
+    float backgroundDim,
+    float fsrEnabled,
+    float fsrSharpness
 ) {
     std::lock_guard<std::mutex> lock(mEngineMutex);
     if (mProgram == 0) {
@@ -250,8 +348,13 @@ bool VideoColorEngine::render(
     if (muSaturationHandle >= 0) glUniform1f(muSaturationHandle, saturation);
     if (muGammaHandle >= 0)      glUniform1f(muGammaHandle, gamma);
     if (muSharpnessHandle >= 0)  glUniform1f(muSharpnessHandle, sharpness);
+    if (muBlueLightFilterHandle >= 0) glUniform1f(muBlueLightFilterHandle, blueLightFilter);
+    if (muBlurRadiusHandle >= 0) glUniform1f(muBlurRadiusHandle, blurRadius);
+    if (muBackgroundDimHandle >= 0) glUniform1f(muBackgroundDimHandle, backgroundDim);
+    if (muFsrEnabledHandle >= 0) glUniform1f(muFsrEnabledHandle, fsrEnabled);
+    if (muFsrSharpnessHandle >= 0) glUniform1f(muFsrSharpnessHandle, fsrSharpness);
 
-    // Configurar texel step para filtro de nitidez
+    // Configurar texel step para filtro de nitidez y desenfoque
     if (muTexelStepHandle >= 0) {
         float stepX = (texWidth > 0.0f) ? (1.0f / texWidth) : 0.0f;
         float stepY = (texHeight > 0.0f) ? (1.0f / texHeight) : 0.0f;

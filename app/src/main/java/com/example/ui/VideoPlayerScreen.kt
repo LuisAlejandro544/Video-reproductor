@@ -46,6 +46,7 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Replay10
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Speed
+import androidx.compose.material.icons.filled.Subtitles
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.VolumeDown
@@ -96,22 +97,33 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.media3.common.C
 import androidx.media3.common.MediaItem
+import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
+import androidx.media3.common.Tracks
+import androidx.media3.common.text.Cue
+import androidx.media3.common.text.CueGroup
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.audio.AudioSink
 import androidx.media3.exoplayer.audio.DefaultAudioSink
 import androidx.media3.ui.AspectRatioFrameLayout
+import androidx.media3.ui.CaptionStyleCompat
 import androidx.media3.ui.PlayerView
+import androidx.media3.ui.SubtitleView
 import com.example.audio.AudioEngineType
 import com.example.audio.OboeAudioEngine
 import com.example.audio.OboeAudioProcessor
 import com.example.model.VideoItem
 import com.example.opengl.OpenGLVideoPlayerView
 import com.example.opengl.VideoEqualizerState
+import com.example.player.PlayerLoadControlHelper
+import com.example.subtitles.SubtitleSize
+import com.example.subtitles.SubtitleTrackItem
+import com.example.subtitles.SubtitleUtils
 import com.example.utils.VideoUtils
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -241,7 +253,26 @@ fun VideoPlayerScreen(
     var gestureHideJob by remember { mutableStateOf<Job?>(null) }
     var playbackErrorMessage by remember { mutableStateOf<String?>(null) }
 
-    // Instancia de ExoPlayer personalizada con el Sink de Oboe C++
+    // Estado del Sistema de Subtítulos (SRT / WebVTT y pistas embebidas)
+    var showSubtitlesSheet by remember { mutableStateOf(false) }
+    var subtitlesEnabled by remember { mutableStateOf(true) }
+    var subtitleSize by remember { mutableStateOf(SubtitleSize.MEDIUM) }
+    var externalSubtitle by remember { mutableStateOf<SubtitleTrackItem?>(null) }
+    var availableTracks by remember { mutableStateOf<List<SubtitleTrackItem>>(emptyList()) }
+    var selectedTrackId by remember { mutableStateOf<String?>(null) }
+    var currentCues by remember { mutableStateOf<List<Cue>>(emptyList()) }
+
+    // Control de Carga de RAM Adaptativo para Android Go y terminales modestos
+    val adaptiveLoadControl = remember {
+        try {
+            PlayerLoadControlHelper.createAdaptiveLoadControl(context)
+        } catch (e: Throwable) {
+            Log.e("VideoPlayerScreen", "Error inicializando LoadControl adaptativo: ${e.message}")
+            null
+        }
+    }
+
+    // Instancia de ExoPlayer personalizada con el Sink de Oboe C++ y LoadControl adaptativo
     val exoPlayer = remember(videoItem.uri) {
         val audioSink = try {
             DefaultAudioSink.Builder(context)
@@ -262,7 +293,12 @@ fun VideoPlayerScreen(
             }
         }
 
-        ExoPlayer.Builder(context, renderersFactory).build().apply {
+        val playerBuilder = ExoPlayer.Builder(context, renderersFactory)
+        if (adaptiveLoadControl != null) {
+            playerBuilder.setLoadControl(adaptiveLoadControl)
+        }
+
+        playerBuilder.build().apply {
             try {
                 val mediaItem = MediaItem.fromUri(videoItem.uri)
                 setMediaItem(mediaItem)
@@ -384,6 +420,40 @@ fun VideoPlayerScreen(
                 isPlaying = false
                 playbackErrorMessage = error.localizedMessage ?: "No se pudo reproducir el video."
             }
+
+            override fun onCues(cueGroup: CueGroup) {
+                currentCues = cueGroup.cues
+            }
+
+            override fun onTracksChanged(tracks: Tracks) {
+                val detected = mutableListOf<SubtitleTrackItem>()
+                for (group in tracks.groups) {
+                    if (group.type == C.TRACK_TYPE_TEXT) {
+                        for (i in 0 until group.length) {
+                            val format = group.getTrackFormat(i)
+                            val isSelected = group.isTrackSelected(i)
+                            val label = when {
+                                !format.label.isNullOrBlank() -> format.label!!
+                                !format.language.isNullOrBlank() -> "Idioma: ${format.language}"
+                                else -> "Pista de subtítulos #${detected.size + 1}"
+                            }
+                            val item = SubtitleTrackItem(
+                                id = format.id ?: "text_track_${group.mediaTrackGroup.id}_$i",
+                                label = label,
+                                language = format.language,
+                                mimeType = format.sampleMimeType ?: MimeTypes.APPLICATION_SUBRIP,
+                                isExternal = false,
+                                trackIndex = i
+                            )
+                            detected.add(item)
+                            if (isSelected && selectedTrackId == null) {
+                                selectedTrackId = item.id
+                            }
+                        }
+                    }
+                }
+                availableTracks = detected
+            }
         }
         exoPlayer.addListener(listener)
         onDispose {
@@ -435,6 +505,39 @@ fun VideoPlayerScreen(
             videoHeight = videoHeight,
             modifier = Modifier.fillMaxSize()
         )
+
+        // Capa de Subtítulos de Alto Contraste (SRT / WebVTT y pistas embebidas)
+        if (subtitlesEnabled && currentCues.isNotEmpty()) {
+            AndroidView(
+                factory = { ctx ->
+                    SubtitleView(ctx).apply {
+                        setUserDefaultStyle()
+                        setStyle(
+                            CaptionStyleCompat(
+                                android.graphics.Color.WHITE,
+                                android.graphics.Color.TRANSPARENT,
+                                android.graphics.Color.TRANSPARENT,
+                                CaptionStyleCompat.EDGE_TYPE_OUTLINE,
+                                android.graphics.Color.BLACK,
+                                null
+                            )
+                        )
+                        setFractionalTextSize(subtitleSize.fraction)
+                    }
+                },
+                update = { view ->
+                    view.setFractionalTextSize(subtitleSize.fraction)
+                    view.setCues(currentCues)
+                },
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(
+                        start = 24.dp,
+                        end = 24.dp,
+                        bottom = if (showControls) 96.dp else 28.dp
+                    )
+            )
+        }
 
         // Capa interactiva de gestos: toque simple (controles) y deslizamiento vertical (brillo a la izq, volumen a la der)
         Box(
@@ -646,7 +749,7 @@ fun VideoPlayerScreen(
                     modifier = Modifier.align(Alignment.Center)
                 )
 
-                // Barra inferior: Slider de tiempo, duración, velocidad, ecualizador y silencio
+                // Barra inferior: Slider de tiempo, duración, velocidad, ecualizador, subtítulos y silencio
                 BottomControlsBar(
                     currentPositionMs = if (isDraggingSlider) {
                         (sliderScrubbingPosition * totalDurationMs).toLong()
@@ -657,12 +760,17 @@ fun VideoPlayerScreen(
                     isMuted = isMuted,
                     playbackSpeed = playbackSpeed,
                     hasActiveEqualizer = !equalizerState.isDefault,
+                    hasActiveSubtitles = subtitlesEnabled && (externalSubtitle != null || selectedTrackId != null || currentCues.isNotEmpty()),
                     onOpenSpeedSelector = {
                         showSpeedSheet = true
                         lastInteractionTime = System.currentTimeMillis()
                     },
                     onOpenEqualizer = {
                         showEqualizerSheet = true
+                        lastInteractionTime = System.currentTimeMillis()
+                    },
+                    onOpenSubtitles = {
+                        showSubtitlesSheet = true
                         lastInteractionTime = System.currentTimeMillis()
                     },
                     onSeekStarted = {
@@ -710,6 +818,91 @@ fun VideoPlayerScreen(
                     exoPlayer.playbackParameters = PlaybackParameters(newSpeed, 1.0f)
                 },
                 onDismiss = { showSpeedSheet = false }
+            )
+        }
+
+        // Panel modal de Gestión y Selección de Subtítulos SRT y VTT
+        if (showSubtitlesSheet) {
+            SubtitlesBottomSheet(
+                subtitlesEnabled = subtitlesEnabled,
+                availableTracks = availableTracks,
+                selectedTrackId = selectedTrackId,
+                externalSubtitle = externalSubtitle,
+                selectedSize = subtitleSize,
+                onToggleSubtitles = { enabled ->
+                    subtitlesEnabled = enabled
+                    exoPlayer.trackSelectionParameters = exoPlayer.trackSelectionParameters
+                        .buildUpon()
+                        .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, !enabled)
+                        .build()
+                },
+                onSelectTrack = { track ->
+                    selectedTrackId = track.id
+                    subtitlesEnabled = true
+                    if (!track.isExternal) {
+                        exoPlayer.trackSelectionParameters = exoPlayer.trackSelectionParameters
+                            .buildUpon()
+                            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+                            .setPreferredTextLanguage(track.language)
+                            .build()
+                    }
+                },
+                onPickExternalSubtitle = { uri ->
+                    val fileName = SubtitleUtils.resolveSubtitleFileName(context, uri)
+                    val mimeType = SubtitleUtils.detectSubtitleMimeType(fileName)
+                    val track = SubtitleTrackItem(
+                        id = "ext_${System.currentTimeMillis()}",
+                        label = fileName,
+                        mimeType = mimeType,
+                        isExternal = true,
+                        uri = uri
+                    )
+                    externalSubtitle = track
+                    selectedTrackId = track.id
+                    subtitlesEnabled = true
+
+                    val subtitleConfig = MediaItem.SubtitleConfiguration.Builder(uri)
+                        .setMimeType(mimeType)
+                        .setLanguage("und")
+                        .setLabel(fileName)
+                        .setSelectionFlags(C.SELECTION_FLAG_DEFAULT)
+                        .build()
+
+                    val currentMediaItem = exoPlayer.currentMediaItem
+                    if (currentMediaItem != null) {
+                        val currentPos = exoPlayer.currentPosition
+                        val wasPlaying = exoPlayer.playWhenReady
+                        val updatedItem = currentMediaItem.buildUpon()
+                            .setSubtitleConfigurations(listOf(subtitleConfig))
+                            .build()
+                        exoPlayer.setMediaItem(updatedItem, currentPos)
+                        exoPlayer.prepare()
+                        exoPlayer.playWhenReady = wasPlaying
+                    }
+
+                    exoPlayer.trackSelectionParameters = exoPlayer.trackSelectionParameters
+                        .buildUpon()
+                        .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+                        .build()
+                },
+                onRemoveExternalSubtitle = {
+                    externalSubtitle = null
+                    val currentMediaItem = exoPlayer.currentMediaItem
+                    if (currentMediaItem != null) {
+                        val currentPos = exoPlayer.currentPosition
+                        val wasPlaying = exoPlayer.playWhenReady
+                        val updatedItem = currentMediaItem.buildUpon()
+                            .setSubtitleConfigurations(emptyList())
+                            .build()
+                        exoPlayer.setMediaItem(updatedItem, currentPos)
+                        exoPlayer.prepare()
+                        exoPlayer.playWhenReady = wasPlaying
+                    }
+                },
+                onSizeChanged = { newSize ->
+                    subtitleSize = newSize
+                },
+                onDismiss = { showSubtitlesSheet = false }
             )
         }
 
@@ -1183,8 +1376,10 @@ private fun BottomControlsBar(
     isMuted: Boolean,
     playbackSpeed: Float,
     hasActiveEqualizer: Boolean,
+    hasActiveSubtitles: Boolean,
     onOpenSpeedSelector: () -> Unit,
     onOpenEqualizer: () -> Unit,
+    onOpenSubtitles: () -> Unit,
     onSeekStarted: () -> Unit,
     onSeekChanged: (Float) -> Unit,
     onSeekFinished: () -> Unit,
@@ -1325,6 +1520,40 @@ private fun BottomControlsBar(
                                 style = MaterialTheme.typography.labelSmall.copy(
                                     fontWeight = FontWeight.Bold,
                                     color = if (hasActiveEqualizer) Color(0xFF38BDF8) else Color.White
+                                )
+                            )
+                        }
+                    }
+
+                    // Botón Selector de Subtítulos SRT y VTT
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = if (hasActiveSubtitles) Color(0xFF059669).copy(alpha = 0.25f) else Color.White.copy(alpha = 0.15f),
+                        border = BorderStroke(
+                            1.dp,
+                            if (hasActiveSubtitles) Color(0xFF34D399) else Color.White.copy(alpha = 0.25f)
+                        ),
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable(onClick = onOpenSubtitles)
+                            .testTag("player_subtitles_button")
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Subtitles,
+                                contentDescription = "Subtítulos",
+                                tint = if (hasActiveSubtitles) Color(0xFF34D399) else Color.White,
+                                modifier = Modifier.size(15.dp)
+                            )
+                            Text(
+                                text = if (hasActiveSubtitles) "CC On" else "CC",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (hasActiveSubtitles) Color(0xFF34D399) else Color.White
                                 )
                             )
                         }

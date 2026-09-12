@@ -64,6 +64,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -72,6 +73,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.audio.AudioEngineType
 import com.example.audio.OboeAudioEngine
+import com.example.player.PlayerLoadControlHelper
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -114,6 +116,9 @@ fun SettingsScreen(
 
     // Objeto AudioTrack para la prueba en modo Media3
     var activeTestTrack by remember { mutableStateOf<AudioTrack?>(null) }
+
+    val context = LocalContext.current
+    val memoryProfile = remember { PlayerLoadControlHelper.getMemoryProfile(context) }
 
     // Manejar botón físico/gestual de Atrás
     BackHandler {
@@ -439,6 +444,23 @@ fun SettingsScreen(
                     TelemetryItem(
                         label = "Soporte Nativo AAudio",
                         value = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) "Disponible (API >= 26)" else "No disponible"
+                    )
+                    TelemetryItem(
+                        label = "Perfil Búfer RAM",
+                        value = "${memoryProfile.profileName} (${memoryProfile.maxBufferRamMb} MB)",
+                        highlight = true
+                    )
+                    TelemetryItem(
+                        label = "Búfer Dinámico",
+                        value = "${memoryProfile.minBufferSec.toInt()}s - ${memoryProfile.maxBufferSec.toInt()}s"
+                    )
+                    TelemetryItem(
+                        label = "RAM Total Dispositivo",
+                        value = "${memoryProfile.totalRamMb} MB (Android Go: ${if (memoryProfile.isLowRamDevice) "Sí" else "No"})"
+                    )
+                    TelemetryItem(
+                        label = "Motor de Subtítulos",
+                        value = "SRT (SubRip) y WebVTT (.vtt)"
                     )
                 }
             }

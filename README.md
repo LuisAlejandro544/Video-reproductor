@@ -12,22 +12,51 @@
 
 ## ✨ Características Principales
 
+- **Soporte y Gestión de Subtítulos SRT (.srt - SubRip) y WebVTT (.vtt):**
+  - Renderizado en tiempo real sincronizado mediante `SubtitleView` sobre la superficie de video OpenGL.
+  - Detección automática y selección de pistas de subtítulos internas integradas en contenedores MKV/MP4.
+  - Carga e importación de archivos de subtítulos externos (`.srt` y `.vtt`) desde el almacenamiento del dispositivo o tarjeta MicroSD mediante el Storage Access Framework.
+  - Panel modal inferior de configuración rápida (`SubtitlesBottomSheet`):
+    - Activación y desactivación instantánea de subtítulos.
+    - Selector interactivo de pistas disponibles con indicación del idioma o archivo cargado.
+    - Personalización de tamaño tipográfico en 4 niveles (Pequeño, Normal, Grande, Extra Grande).
+    - Botón de acceso rápido `CC` en la barra de controles con etiqueta visual `CC On` cuando se encuentran activos.
+    - Estilizado de alto contraste (texto blanco con borde negro) para legibilidad óptima sobre fondos claros y oscuros.
+- **Búfer de Memoria RAM Adaptativo (Protección Anti-OOM para Android Go y Teléfonos Modestos):**
+  - Gestión inteligente de memoria en tiempo de ejecución mediante `PlayerLoadControlHelper`:
+    - **Perfil Android Go / Modesto (≤ 2.5 GB de RAM o `isLowRamDevice`):** Búfer estricto de 4s a 10s y límite máximo de memoria asignable de 16 MB a 24 MB en `DefaultAllocator`. Previene que el sistema operativo mate la aplicación por el *Low Memory Killer* (LMK) durante la reproducción de videos pesados.
+    - **Perfil Estándar / Alto Rendimiento (≥ 3 GB de RAM):** Búfer generoso de 15s a 30s para máxima estabilidad de bitrate y saltos de línea de tiempo instantáneos.
+  - Telemetría en la pantalla de configuración que refleja el perfil de búfer asignado, tiempos mínimos/máximos y memoria RAM total del dispositivo.
 - **Biblioteca Interactiva de Videos Importados y Vistos (Persistencia Local con Room):**
   - Registro automático y persistente en SQLite (`VideoEntity`, `VideoDao`) de cada video cargado desde la Galería o Gestor de Archivos.
   - Extracción y muestra inmediata de metadatos: **título completo del archivo**, **tamaño** y **duración formateada** (ej. `04:32` o `01:20:15`).
   - Barra de progreso visual interactiva indicando el porcentaje visto y la marca de tiempo de pausa (ej. *En pausa en 02:15* o *Visto completo*).
   - Reproducción o reanudación instantánea con un solo toque directamente desde la posición guardada.
   - Gestión del historial: eliminación de videos individuales o vaciado total mediante confirmación.
-- **Ecualizador de Video en Tiempo Real con OpenGL ES (C++ y Shaders GPU):**
+- **Ecualizador de Video en Tiempo Real y Efectos Visuales con OpenGL ES (C++ y Shaders GPU):**
   - Postprocesamiento de imagen en tiempo real sin pausas ni interrupciones mediante pipeline gráfico nativo en C++ (`VideoColorEngine`) y textura externa *Zero-Copy* (`GL_TEXTURE_EXTERNAL_OES`).
   - Shaders de fragmentos GLSL ejecutados directamente en los núcleos de sombreado de la GPU.
-  - Controles deslizantes continuos:
+  - **Filtro de Luz Azul / Modo Descanso Visual (Eye Comfort):**
+    - Atenuación selectiva y suave del espectro azul (0% a 100%) con sutil compensación de temperatura ámbar.
+    - Reduce la fatiga ocular durante sesiones de visualización prolongadas o en entornos nocturnos.
+    - Preset dedicado "Descanso Visual" con un solo toque.
+  - **Desenfoque de Fondo para Videos Verticales (Pillarbox Blur):**
+    - Sustituye las barras negras laterales generadas al reproducir videos verticales (formato 9:16 o 4:3 en pantallas apaisadas) por una versión ampliada, desenfocada (filtro Gaussiano de 9 toques) y suavemente atenuada del propio video en tiempo real.
+    - Ejecutado directamente en GPU mediante doble paso de renderizado sin sobrecarga de decodificación adicional ni lag.
+    - Interruptor dinámico para activar o desactivar el efecto instantáneamente según la preferencia del usuario.
+  - **AMD FidelityFX™ Super Resolution 1.0 (FSR 1.0):**
+    - Algoritmo de escalado y reconstrucción espacial de alta fidelidad adaptado a OpenGL ES:
+      - **EASU (Edge-Adaptive Spatial Upsampling):** Análisis direccional de bordes con gradientes de luminancia Rec. 709 para escalar videos de baja resolución minimizando distorsiones y efecto borroso.
+      - **RCAS (Robust Contrast-Adaptive Sharpening):** Afilado dinámico dependiente del contraste local con acotamiento de vecindario (*clamping*) para evitar estrictamente artefactos de sobreenfoque (*ringing* o halos).
+    - Deslizador de ajuste fino de intensidad RCAS (0% a 100%, con valor sugerido al 75%) y preset directo "Super-Resolución FSR".
+  - Controles deslizantes continuos de ajuste fino:
     - **Brillo:** Desplazamiento de luz perceptual (-50% a +50%).
     - **Contraste:** Factor de escala con punto pivote en gris medio (50% a 200%).
     - **Saturación:** Luminancia ponderada estándar Rec. 709 (0% a 200%).
     - **Corrección Gamma:** Curva exponencial de rango dinámico (0.5 a 2.0).
     - **Nitidez (Sharpening):** Realce de bordes acelerado mediante kernel de convolución Laplaciano 3x3.
-  - **Presets de Imagen Instantáneos:** Normal, Vívido, Cine, Nocturno, Alto Contraste y Blanco y Negro.
+    - **Filtro Luz Azul:** Factor continuo de calidez y descanso visual (0% a 100%).
+  - **Presets de Imagen Instantáneos:** Normal, Descanso Visual, Vívido, Cine, Nocturno, Alto Contraste y Blanco y Negro.
   - Panel inferior moderno e interactivo (`VideoEqualizerSheet`) con botón de restablecimiento rápido.
 - **Control de Velocidad de Reproducción (Hasta 2.0x) con Corrección de Tono (Sonic):**
   - Selector de velocidad desde 0.25x hasta un máximo de **2.0x** tanto por presets rápidos como por ajuste fino continuo.
@@ -79,6 +108,8 @@
 | **Motor de Audio Nativo** | C++17 + Google Oboe 1.9.3 | Procesamiento de audio de ultra baja latencia con AAudio y OpenSL ES. |
 | **Motor Gráfico y Postprocesado** | C++17 + OpenGL ES 2.0 / 3.0 (GLSL) | Pipeline de shaders en GPU para ecualizador de video en tiempo real (Zero-Copy OES). |
 | **Control de Velocidad** | Sonic Pitch Preservation (Media3) | Time-stretching hasta 2.0x manteniendo tonalidad y timbre acústico natural. |
+| **Subtítulos y Cues** | Media3 SubtitleView + SubRip/WebVTT | Renderizado de alta visibilidad, soporte de pistas internas e importación de externos (.srt/.vtt). |
+| **Control de Búfer RAM** | `PlayerLoadControlHelper` (ExoPlayer) | Asignación adaptativa de memoria anti-OOM con perfil específico para Android Go. |
 | **Núcleo de Alto Rendimiento** | Rust 2021 (`novaplayer_rust`) | Parsing de metadatos, seguridad en memoria y procesamiento concurrente. |
 
 ---

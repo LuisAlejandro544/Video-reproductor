@@ -9,60 +9,113 @@ package com.example.opengl
  * - Saturación (Saturation): Factor de intensidad cromática Rec. 709 [0.0f a 2.0f].
  * - Corrección Gamma (Gamma): Curva exponencial de luminancia perceptual [0.5f a 2.0f].
  * - Nitidez (Sharpness): Coeficiente del kernel Laplaciano para realce de bordes [0.0f a 1.5f].
+ * - Filtro Luz Azul (Blue Light Filter): Atenuación selectiva del espectro azul y calidez ámbar [0.0f a 1.0f].
+ * - Desenfoque Pillarbox (Pillarbox Blur): Desenfoque dinámico de fondo para videos verticales con barras laterales.
+ * - AMD FidelityFX Super Resolution (FSR 1.0): Reconstrucción espacial adaptativa (EASU) y afilado por contraste (RCAS).
  */
 data class VideoEqualizerState(
     val brightness: Float = 0.0f,
     val contrast: Float = 1.0f,
     val saturation: Float = 1.0f,
     val gamma: Float = 1.0f,
-    val sharpness: Float = 0.0f
+    val sharpness: Float = 0.0f,
+    val blueLightFilter: Float = 0.0f,
+    val pillarboxBlur: Boolean = true,
+    val fsrEnabled: Boolean = false,
+    val fsrSharpness: Float = 0.75f
 ) {
     val isDefault: Boolean
         get() = brightness == 0.0f &&
                 contrast == 1.0f &&
                 saturation == 1.0f &&
                 gamma == 1.0f &&
-                sharpness == 0.0f
+                sharpness == 0.0f &&
+                blueLightFilter == 0.0f &&
+                pillarboxBlur &&
+                !fsrEnabled &&
+                fsrSharpness == 0.75f
 
     companion object {
         val DEFAULT = VideoEqualizerState()
 
         val PRESETS = mapOf(
             "Normal" to DEFAULT,
+            "Super-Resolución FSR" to VideoEqualizerState(
+                brightness = 0.0f,
+                contrast = 1.06f,
+                saturation = 1.05f,
+                gamma = 1.0f,
+                sharpness = 0.0f,
+                blueLightFilter = 0.0f,
+                pillarboxBlur = true,
+                fsrEnabled = true,
+                fsrSharpness = 0.80f
+            ),
+            "Descanso Visual" to VideoEqualizerState(
+                brightness = -0.04f,
+                contrast = 0.95f,
+                saturation = 0.90f,
+                gamma = 0.95f,
+                sharpness = 0.0f,
+                blueLightFilter = 0.60f,
+                pillarboxBlur = true,
+                fsrEnabled = false,
+                fsrSharpness = 0.75f
+            ),
             "Vívido" to VideoEqualizerState(
                 brightness = 0.04f,
                 contrast = 1.18f,
                 saturation = 1.35f,
                 gamma = 1.05f,
-                sharpness = 0.35f
+                sharpness = 0.35f,
+                blueLightFilter = 0.0f,
+                pillarboxBlur = true,
+                fsrEnabled = false,
+                fsrSharpness = 0.75f
             ),
             "Cine" to VideoEqualizerState(
                 brightness = -0.02f,
                 contrast = 1.12f,
                 saturation = 1.10f,
                 gamma = 0.95f,
-                sharpness = 0.20f
+                sharpness = 0.20f,
+                blueLightFilter = 0.0f,
+                pillarboxBlur = true,
+                fsrEnabled = false,
+                fsrSharpness = 0.75f
             ),
             "Nocturno" to VideoEqualizerState(
                 brightness = -0.10f,
                 contrast = 0.92f,
                 saturation = 0.85f,
                 gamma = 0.90f,
-                sharpness = 0.0f
+                sharpness = 0.0f,
+                blueLightFilter = 0.40f,
+                pillarboxBlur = true,
+                fsrEnabled = false,
+                fsrSharpness = 0.75f
             ),
             "Alto Contraste" to VideoEqualizerState(
                 brightness = 0.02f,
                 contrast = 1.45f,
                 saturation = 1.20f,
                 gamma = 1.0f,
-                sharpness = 0.50f
+                sharpness = 0.50f,
+                blueLightFilter = 0.0f,
+                pillarboxBlur = true,
+                fsrEnabled = false,
+                fsrSharpness = 0.75f
             ),
             "Blanco y Negro" to VideoEqualizerState(
                 brightness = 0.0f,
                 contrast = 1.15f,
                 saturation = 0.0f,
                 gamma = 1.0f,
-                sharpness = 0.25f
+                sharpness = 0.25f,
+                blueLightFilter = 0.0f,
+                pillarboxBlur = true,
+                fsrEnabled = false,
+                fsrSharpness = 0.75f
             )
         )
     }

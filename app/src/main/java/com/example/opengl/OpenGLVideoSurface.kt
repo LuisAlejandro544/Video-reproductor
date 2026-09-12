@@ -161,11 +161,45 @@ class OpenGLVideoRenderer(
                 }
             }
 
-            // Calcular matriz de transformación para modo de aspecto (FIT, ZOOM, FILL)
+            // Calcular relación de aspecto de superficie y de video
+            val currentEq = equalizerState
+            val surfaceAspect = surfaceWidth.toFloat() / surfaceHeight.toFloat()
+            val videoAspect = videoWidth.toFloat() / videoHeight.toFloat()
+
+            // Detectar si el video genera barras laterales (pillarboxes), común en videos verticales en pantallas apaisadas
+            val hasPillarbox = aspectMode == AspectRatioMode.FIT && videoAspect < surfaceAspect
+
+            // PASO 1: Si Pillarbox Blur está activo y hay barras laterales, renderizar el fondo desenfocado y atenuado
+            if (currentEq.pillarboxBlur && hasPillarbox) {
+                val bgMvpMatrix = FloatArray(16)
+                Matrix.setIdentityM(bgMvpMatrix, 0)
+                // Zoom proporcional para cubrir toda la superficie sin barras negras
+                val bgScaleY = surfaceAspect / videoAspect
+                Matrix.scaleM(bgMvpMatrix, 0, 1.0f, bgScaleY, 1.0f)
+
+                NativeVideoFilter.nativeRender(
+                    textureId = textureId,
+                    stMatrix = stMatrix,
+                    mvpMatrix = bgMvpMatrix,
+                    brightness = currentEq.brightness,
+                    contrast = currentEq.contrast,
+                    saturation = currentEq.saturation,
+                    gamma = currentEq.gamma,
+                    sharpness = 0.0f,
+                    texWidth = videoWidth.toFloat(),
+                    texHeight = videoHeight.toFloat(),
+                    blueLightFilter = currentEq.blueLightFilter,
+                    blurRadius = 14.0f,
+                    backgroundDim = 0.45f,
+                    fsrEnabled = 0.0f,
+                    fsrSharpness = 0.0f
+                )
+            }
+
+            // PASO 2: Calcular matriz de transformación para modo de aspecto (FIT, ZOOM, FILL)
             calculateMvpMatrix()
 
-            // Delegar el renderizado al shader C++
-            val currentEq = equalizerState
+            // Delegar el renderizado frontal al shader C++ (con AMD FSR 1.0 si está activado)
             NativeVideoFilter.nativeRender(
                 textureId = textureId,
                 stMatrix = stMatrix,
@@ -176,7 +210,12 @@ class OpenGLVideoRenderer(
                 gamma = currentEq.gamma,
                 sharpness = currentEq.sharpness,
                 texWidth = videoWidth.toFloat(),
-                texHeight = videoHeight.toFloat()
+                texHeight = videoHeight.toFloat(),
+                blueLightFilter = currentEq.blueLightFilter,
+                blurRadius = 0.0f,
+                backgroundDim = 0.0f,
+                fsrEnabled = if (currentEq.fsrEnabled) 1.0f else 0.0f,
+                fsrSharpness = currentEq.fsrSharpness
             )
         } catch (e: Throwable) {
             Log.w(TAG, "Excepción transitoria en onDrawFrame: ${e.message}")

@@ -89,10 +89,13 @@ Este archivo proporciona el contexto técnico, arquitectónico y operativo neces
     - `uSaturation`: Ponderación de luminancia Rec. 709 (`dot(rgb, vec3(0.2126, 0.7152, 0.0722))`).
     - `uGamma`: Corrección de curva exponencial (`pow(rgb, vec3(1.0 / uGamma))`).
     - `uSharpness`: Filtro de convolución con kernel Laplaciano 3x3 adaptado a las dimensiones del video.
+    - `uBlueLightFilter`: Factor continuo [0.0f a 1.0f] que atenúa selectivamente el canal azul (`color.b *= (1.0 - uBlueLightFilter * 0.45)`) y compensa con calidez ámbar suave (`color.r` y `color.g`) para descanso visual.
+    - `uBlurRadius` y `uBackgroundDim`: Radio de muestreo y coeficiente de atenuación para el desenfoque de barras laterales (Pillarbox Blur).
 - **Acoplamiento en Compose (`OpenGLVideoSurface.kt`):**
   - `GLSurfaceView` configurado con `EGLContext` versión 2.0/3.0 y modo `RENDERMODE_WHEN_DIRTY`.
   - `SurfaceTexture.OnFrameAvailableListener` solicita renderizado (`requestRender()`) únicamente al recibir una nueva trama decodificada, minimizando el consumo de batería en reposo.
   - El estado `@Volatile` en `OpenGLVideoRenderer` asegura visibilidad atómica instantánea de los cambios de ecualización entre el hilo de Compose y el hilo GL.
+  - **Doble Paso de Renderizado para Videos Verticales:** Cuando un video vertical genera barras negras laterales (`hasPillarbox`), se ejecuta un primer pase con escalado `ZOOM/FILL`, radio de desenfoque Gaussiano 9-tap y atenuación de 45%, seguido inmediatamente por el renderizado frontal nítido con la relación de aspecto original (`FIT`).
 
 ### 8. Control de Velocidad de Reproducción y Preservación de Tono (Sonic)
 - **Time-Stretching con Sonic:**
@@ -109,6 +112,58 @@ Este archivo proporciona el contexto técnico, arquitectónico y operativo neces
   - Como los archivos `.keystore` se ignoran en el control de versiones por seguridad, el script genera el archivo `debug.keystore` de forma 100% no interactiva con `keytool` (formato PKCS12, alias `androiddebugkey`, password `android`).
   - Esto garantiza que Gradle encuentre siempre la clave esperada en `signingConfigs.debugConfig` sin detener la ejecución de GitHub Actions ni requerir interacción del usuario.
   - Publica el APK resultante en los artefactos de GitHub Actions (`NovaPlayer-Debug-APK`) con 30 días de retención.
+
+### 10. Búfer de Memoria RAM Adaptativo y Protección Anti-OOM (`PlayerLoadControlHelper`)
+- **Problema Abordado:** En terminales con especificaciones reducidas (Android Go, dispositivos con 1 GB o 2 GB de RAM y CPUs de 32 bits), el búfer ilimitado por defecto de ExoPlayer puede asignar más de 200 MB de memoria continua, activando el *Low Memory Killer* (LMK) y forzando el cierre de la aplicación en segundo plano o al decodificar pistas pesadas.
+- **Estrategia Implementada:**
+  - `PlayerLoadControlHelper` evalúa la memoria física del dispositivo (`ActivityManager.getMemoryInfo`) y la bandera `activityManager.isLowRamDevice`.
+  - **Perfil Low RAM / Android Go (≤ 2.5 GB RAM):** Configura `DefaultLoadControl` con:
+    - Búfer mínimo: 4.000 ms (4 segundos).
+    - Búfer máximo: 10.000 ms (10 segundos).
+    - Búfer previo a iniciar reproducción: 1.000 ms (1 segundo).
+    - Búfer tras re-búfer: 2.500 ms (2.5 segundos).
+    - `targetBufferBytes` y tamaño de bloque de `DefaultAllocator`: Restringido estrictamente a un tope de 16 MB (`16 * 1024 * 1024`).
+    - `prioritizeTimeOverSizeThresholds = false` para garantizar que la memoria física prevalezca ante archivos con tasas de bits desmedidas.
+  - **Perfil Estándar / Gama Alta (≥ 3 GB RAM):** Asigna un búfer holgado de 15.000 ms a 30.000 ms para saltos temporales ultra rápidos y resistencia frente a caídas de lectura.
+- **Diagnóstico y Transparencia:** La pantalla `SettingsScreen` expone en tiempo real el perfil asignado, los segundos de retención y la RAM total del dispositivo.
+
+### 11. Pipeline y Gestión de Subtítulos SRT (.srt) y WebVTT (.vtt)
+- **Renderizado de Alta Eficiencia:** Implementado mediante `SubtitleView` de Media3 ui sobre la superficie de video nativa OpenGL. El listener `Player.Listener.onCues` transmite las señales de texto formateadas de forma inmediata al componente visual.
+- **Detección Automática de Pistas Internas:** A través de `Player.Listener.onTracksChanged`, se discriminan los grupos de formato `C.TRACK_TYPE_TEXT` para identificar pistas de subtítulos embebidas en contenedores MKV o MP4, detectando etiquetas, códigos de idioma (ISO) y mime types (`text/x-ssa`, `application/x-subrip`, `text/vtt`).
+- **Importación de Archivos Externos:** Mediante el Storage Access Framework (`ActivityResultContracts.OpenDocument`), el usuario puede importar archivos locales `.srt` y `.vtt` desde el almacenamiento interno o tarjeta MicroSD.
+- **Inyección Dinámica de Subtítulos:** Se construye un `MediaItem.SubtitleConfiguration` con el `Uri` y tipo MIME correspondiente (`MimeTypes.APPLICATION_SUBRIP` o `MimeTypes.TEXT_VTT`), actualizando el `MediaItem` en caliente en ExoPlayer y preservando la posición exacta de reproducción (`currentPosition`).
+- **Panel Inferior Modal (`SubtitlesBottomSheet`):**
+  - Conmutador general de subtítulos (activa/desactiva la visualización de texto).
+  - Lista de pistas disponibles (internas del contenedor y externa cargada).
+  - Selector de tamaño tipográfico en 4 niveles (Pequeño 14sp, Normal 18sp, Grande 24sp, Extra Grande 32sp) con vista previa interactiva.
+  - Botón de acceso directo `CC` con retroalimentación visual (`CC On` en color esmeralda) en la barra de controles inferior.
+  - Estilizado de alto contraste: texto en color blanco puro con trazo y borde negro para máxima legibilidad sobre escenas claras y oscuras.
+
+### 12. Desenfoque Pillarbox y Filtro de Luz Azul en GPU
+- **Filtro de Luz Azul / Descanso Visual:** Modulación en el Fragment Shader GLSL que suprime de forma continua y suave las frecuencias azules sin distorsionar agresivamente la luminancia general, introduciendo una suave curvatura ámbar en los canales rojo y verde para ver videos en la oscuridad con confort visual garantizado.
+- **Desenfoque Pillarbox (Pillarbox Blur):**
+  - Cuando la relación de aspecto del video es menor a la de la superficie (`videoAspect < surfaceAspect`, típico de videos de TikTok, Shorts, reels o videos verticales en pantalla apaisada), en lugar de dejar barras negras opacas, el renderizador realiza una primera pasada con un quad escalado que cubre toda la pantalla.
+  - Se aplica un kernel convolucional Gaussiano de 9 muestras con desplazamiento de texels (`uTexelStep * uBlurRadius`) y una atenuación de brillo del 45% (`uBackgroundDim`).
+  - Acto seguido, se dibuja el video central nítido sobre el fondo desenfocado. Todo se calcula en hardware sin copias en memoria RAM ni decodificaciones duplicadas.
+
+### 13. Super-Resolución AMD FidelityFX™ FSR 1.0 en OpenGL ES
+- **Objetivo y Contexto:** Permite escalar videos de baja resolución (360p, 480p, 720p o videos antiguos/comprimidos) hacia la resolución nativa de la pantalla del dispositivo móvil con una nitidez superior, preservando bordes definidos y minimizando el desenfoque sin incurrir en modelos neuronales pesados ni depender de NPU.
+- **Pipeline de Dos Etapas en GLSL:**
+  1. **EASU (Edge-Adaptive Spatial Upsampling):**
+     - Recolecta un patrón de 9 toques (centro, norte, sur, este, oeste y diagonales).
+     - Calcula luminancias de estándar Rec. 709 (`0.2126 R + 0.7152 G + 0.0722 B`).
+     - Evalúa un operador gradiente direccional para detectar la orientación del borde local (`gradX`, `gradY`).
+     - Interpola muestras tangenciales a lo largo del borde para suavizar aristas sin crear artefactos de escalera (*jaggies*).
+  2. **RCAS (Robust Contrast-Adaptive Sharpening):**
+     - Evalúa la curva de contraste local del vecindario.
+     - Determina la amplitud máxima y mínima local para definir una caja de tolerancia (*neighborhood clamping*).
+     - Aplica un factor de afilado dependiente del contraste (`uFsrSharpness`), donde las zonas planas no sufren amplificación de ruido y las zonas con bordes adquieren un realce limpio.
+     - El *clamping* estricto elimina los halos y el *ringing* característicos de los filtros de nitidez no adaptativos.
+- **Integración UI y Presets:**
+  - Control conmutador dinámico en `VideoEqualizerSheet` con distintivo `GPU`.
+  - Deslizador de ajuste de nitidez RCAS (0% a 100%, 75% recomendado por AMD para video).
+  - Preset instantáneo "Super-Resolución FSR" en `VideoEqualizerState`.
+
 
 
 

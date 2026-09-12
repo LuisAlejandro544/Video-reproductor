@@ -61,7 +61,12 @@ object NativeVideoFilter {
         gamma: Float,
         sharpness: Float,
         texWidth: Float,
-        texHeight: Float
+        texHeight: Float,
+        blueLightFilter: Float = 0.0f,
+        blurRadius: Float = 0.0f,
+        backgroundDim: Float = 0.0f,
+        fsrEnabled: Float = 0.0f,
+        fsrSharpness: Float = 0.0f
     ): Boolean {
         if (!isLibraryLoaded) return false
         return try {
@@ -75,7 +80,12 @@ object NativeVideoFilter {
                 gamma,
                 sharpness,
                 texWidth,
-                texHeight
+                texHeight,
+                blueLightFilter,
+                blurRadius,
+                backgroundDim,
+                fsrEnabled,
+                fsrSharpness
             )
         } catch (e: Throwable) {
             Log.e(TAG, "Error invocando internalNativeRender: ${e.message}")
@@ -109,7 +119,12 @@ object NativeVideoFilter {
         gamma: Float,
         sharpness: Float,
         texWidth: Float,
-        texHeight: Float
+        texHeight: Float,
+        blueLightFilter: Float,
+        blurRadius: Float,
+        backgroundDim: Float,
+        fsrEnabled: Float,
+        fsrSharpness: Float
     ): Boolean
 
     @JvmStatic

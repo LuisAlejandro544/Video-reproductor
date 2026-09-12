@@ -10,9 +10,10 @@ Este documento detalla las fases de desarrollo planificadas para convertir a **N
 [✅] Fase 1: Base de Importación y Reproducción de Video
 [✅] Fase 2: Configuración Nativa C++, Google Oboe y Rust
 [✅] Fase 3: Pipeline de Renderizado con OpenGL ES y Ecualizador de Video
-[🔄] Fase 4: Procesamiento de Subtítulos y Metadatos en Rust (Próximo hito)
-[⏳] Fase 5: Optimizaciones Extremas para Android Go y 32 Bits
-[⏳] Fase 6: Empaquetado y Distribución Externa (Uptodown / APK Autónomo)
+[✅] Fase 4: Subtítulos SRT/VTT y Búfer de Memoria RAM Adaptativo (Android Go)
+[🔄] Fase 5: Aceleración con Núcleo Rust y Formatos Complejos (SSA/ASS)
+[⏳] Fase 6: Renderizado Gráfico Adaptativo Vulkan 1.1+
+[⏳] Fase 7: Empaquetado y Distribución Externa (Uptodown / APK Autónomo)
 ```
 
 ---
@@ -46,21 +47,38 @@ Este documento detalla las fases de desarrollo planificadas para convertir a **N
 - [x] Motor nativo de sombreadores en C++ (`VideoColorEngine.h`, `VideoColorEngine.cpp`).
 - [x] Enlace de bibliotecas nativas `GLESv2` y `EGL` en `CMakeLists.txt` con compatibilidad 32 y 64 bits.
 - [x] Texturizado *Zero-Copy* por hardware mediante la extensión `GL_TEXTURE_EXTERNAL_OES` y `SurfaceTexture`.
-- [x] Fragment shader dinámico GLSL ejecutado 100% en GPU para ecualización en tiempo real sin pausar la reproducción:
+- [x] Fragment shader dinámico GLSL ejecutado 100% en GPU para ecualización y efectos visuales en tiempo real sin pausar la reproducción:
   - Brillo dinámico con desplazamiento perceptual [-0.5f a 0.5f].
   - Contraste con pivote en gris neutro [0.5f a 2.0f].
   - Saturación cromática Rec. 709 [0.0f a 2.0f].
   - Corrección de rango dinámico Gamma [0.5f a 2.0f].
   - Filtro de nitidez (*sharpening*) mediante convolución Laplaciano 3x3 en GPU.
-- [x] Presets preconfigurados instantáneos: *Normal*, *Vívido*, *Cine*, *Nocturno*, *Alto Contraste* y *Blanco y Negro*.
+  - **Filtro de Luz Azul / Modo Descanso Visual:** Atenuación selectiva del espectro azul y calidez ámbar [0.0f a 1.0f] para confort nocturno.
+  - **Desenfoque de Fondo para Videos Verticales (Pillarbox Blur):** Relleno dinámico de barras negras laterales con versión ampliada, desenfocada (Gaussiano de 9 toques) y atenuada del video acelerada por GPU.
+  - **AMD FidelityFX Super Resolution 1.0 (FSR 1.0):** Reconstrucción espacial adaptativa (EASU) con detección de aristas por gradiente y afilado dependiente del contraste local (RCAS) en shader GLSL para escalado y nitidez de videos de baja resolución.
+- [x] Presets preconfigurados instantáneos: *Normal*, *Super-Resolución FSR*, *Descanso Visual*, *Vívido*, *Cine*, *Nocturno*, *Alto Contraste* y *Blanco y Negro*.
 - [x] Control de velocidad de reproducción (hasta 2.0x) con *Sonic Pitch Preservation* activo sin distorsión de audio.
 - [x] Componentes modulares Jetpack Compose: `OpenGLVideoSurface`, `VideoEqualizerSheet` y `PlaybackSpeedSheet`.
 
 ---
 
-### 🔄 Fase 4: Núcleo de Rendimiento en Rust (Parsing y Subtítulos - Próximo Hito)
+### ✅ Fase 4: Subtítulos SRT/VTT y Búfer de Memoria RAM Adaptativo (Completada)
+- [x] **Gestión Dinámica de Búfer de RAM (`PlayerLoadControlHelper`):**
+  - Perfil inteligente anti-OOM para terminales con memoria ajustada y Android Go (≤ 2.5 GB RAM): búfer de 4s a 10s y límite de 16 MB a 24 MB en `DefaultAllocator`.
+  - Perfil estándar para terminales con ≥ 3 GB de RAM: búfer de 15s a 30s.
+  - Telemetría en `SettingsScreen` mostrando perfil activo, rangos de segundos, tope en MB y RAM física del dispositivo.
+- [x] **Motor de Subtítulos SRT (.srt) y WebVTT (.vtt):**
+  - Renderizado en tiempo real con `SubtitleView` sobre la superficie de video OpenGL.
+  - Detección automática y selección de pistas internas en archivos contenedores (MKV, MP4).
+  - Carga de subtítulos externos mediante Storage Access Framework (`.srt` y `.vtt`).
+  - Panel modal inferior interactivo (`SubtitlesBottomSheet`) con selector de pistas y ajuste de tamaño tipográfico (Pequeño, Normal, Grande, Extra Grande).
+  - Botón de acceso directo `CC` / `CC On` en la barra de controles inferior.
+
+---
+
+### 🔄 Fase 5: Aceleración con Núcleo Rust y Formatos Complejos (Próximo Hito)
 - [ ] Enlace bidireccional JNI / FFI entre Rust y la capa de aplicación.
-- [ ] Parser de subtítulos multiformato (SRT, VTT, SSA/ASS) con renderizado vectorial optimizado.
+- [ ] Parser nativo de subtítulos con formateo avanzado (SSA/ASS y subtítulos vectoriales).
 - [ ] Extracción rápida de metadatos de archivos de video sin bloquear la interfaz.
 - [ ] Búfer circular en memoria para pre-carga de tramas multimedia.
 

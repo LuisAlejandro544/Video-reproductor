@@ -44,7 +44,12 @@ public:
         float gamma,
         float sharpness,
         float texWidth,
-        float texHeight
+        float texHeight,
+        float blueLightFilter = 0.0f,
+        float blurRadius = 0.0f,
+        float backgroundDim = 0.0f,
+        float fsrEnabled = 0.0f,
+        float fsrSharpness = 0.0f
     );
 
     // Libera shaders y programa en GPU
@@ -74,6 +79,11 @@ private:
     GLint muGammaHandle;
     GLint muSharpnessHandle;
     GLint muTexelStepHandle;
+    GLint muBlueLightFilterHandle;
+    GLint muBlurRadiusHandle;
+    GLint muBackgroundDimHandle;
+    GLint muFsrEnabledHandle;
+    GLint muFsrSharpnessHandle;
 };
 
 #endif // NOVA_VIDEO_COLOR_ENGINE_H

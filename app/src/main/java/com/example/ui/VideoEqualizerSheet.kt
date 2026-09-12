@@ -16,13 +16,18 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.BrightnessMedium
+import androidx.compose.material.icons.filled.BlurOn
 import androidx.compose.material.icons.filled.ColorLens
 import androidx.compose.material.icons.filled.Contrast
 import androidx.compose.material.icons.filled.Details
+import androidx.compose.material.icons.filled.Nightlight
 import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
@@ -33,6 +38,8 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
@@ -231,6 +238,220 @@ fun VideoEqualizerSheet(
                 onValueChange = { onStateChange(state.copy(sharpness = it)) },
                 testTag = "slider_sharpness"
             )
+
+            // 6. Filtro de Luz Azul / Modo Descanso Visual [0.0f a 1.0f]
+            EqualizerSliderRow(
+                icon = Icons.Default.Nightlight,
+                label = "Filtro Luz Azul (Descanso Visual)",
+                valueText = if (state.blueLightFilter <= 0.01f) "Desactivado" else "${(state.blueLightFilter * 100).roundToInt()}% (Ámbar cálido)",
+                value = state.blueLightFilter,
+                valueRange = 0.0f..1.0f,
+                onValueChange = { onStateChange(state.copy(blueLightFilter = it)) },
+                testTag = "slider_blue_light"
+            )
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // 7. Efecto de Desenfoque para Videos Verticales (Pillarbox Blur)
+            Card(
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = Color(0xFF1E1E26)
+                ),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(
+                        modifier = Modifier.weight(1f),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = if (state.pillarboxBlur) Color(0xFF38BDF8).copy(alpha = 0.2f) else Color.White.copy(alpha = 0.08f),
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.BlurOn,
+                                contentDescription = null,
+                                tint = if (state.pillarboxBlur) Color(0xFF38BDF8) else Color.White.copy(alpha = 0.6f),
+                                modifier = Modifier
+                                    .padding(6.dp)
+                                    .size(24.dp)
+                            )
+                        }
+                        Column {
+                            Text(
+                                text = "Fondo Desenfoque (Pillarbox)",
+                                style = MaterialTheme.typography.titleSmall.copy(
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = Color.White
+                                )
+                            )
+                            Text(
+                                text = "Rellena barras negras laterales en videos verticales con fondo desenfocado en GPU.",
+                                style = MaterialTheme.typography.bodySmall.copy(
+                                    color = Color.White.copy(alpha = 0.65f),
+                                    fontSize = 11.sp,
+                                    lineHeight = 15.sp
+                                )
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.width(8.dp))
+
+                    Switch(
+                        checked = state.pillarboxBlur,
+                        onCheckedChange = { onStateChange(state.copy(pillarboxBlur = it)) },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = Color.White,
+                            checkedTrackColor = MaterialTheme.colorScheme.primary,
+                            uncheckedThumbColor = Color.White.copy(alpha = 0.7f),
+                            uncheckedTrackColor = Color(0xFF2A2A34)
+                        ),
+                        modifier = Modifier.testTag("switch_pillarbox_blur")
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // 8. AMD FidelityFX Super Resolution 1.0 (EASU + RCAS)
+            Card(
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = Color(0xFF1E1E26)
+                ),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(14.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(
+                            modifier = Modifier.weight(1f),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = if (state.fsrEnabled) Color(0xFFE11D48).copy(alpha = 0.2f) else Color.White.copy(alpha = 0.08f),
+                                modifier = Modifier.size(36.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.AutoAwesome,
+                                    contentDescription = null,
+                                    tint = if (state.fsrEnabled) Color(0xFFFB7185) else Color.White.copy(alpha = 0.6f),
+                                    modifier = Modifier
+                                        .padding(6.dp)
+                                        .size(24.dp)
+                                )
+                            }
+                            Column {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Text(
+                                        text = "AMD FidelityFX FSR 1.0",
+                                        style = MaterialTheme.typography.titleSmall.copy(
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color.White
+                                        )
+                                    )
+                                    Surface(
+                                        shape = RoundedCornerShape(4.dp),
+                                        color = Color(0xFFE11D48).copy(alpha = 0.3f)
+                                    ) {
+                                        Text(
+                                            text = "GPU",
+                                            style = MaterialTheme.typography.labelSmall.copy(
+                                                color = Color(0xFFFB7185),
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 9.sp
+                                            ),
+                                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                        )
+                                    }
+                                }
+                                Text(
+                                    text = "Reconstrucción espacial (EASU) y afilado por contraste (RCAS) para mejorar nitidez y resolución en tiempo real.",
+                                    style = MaterialTheme.typography.bodySmall.copy(
+                                        color = Color.White.copy(alpha = 0.65f),
+                                        fontSize = 11.sp,
+                                        lineHeight = 15.sp
+                                    )
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.width(8.dp))
+
+                        Switch(
+                            checked = state.fsrEnabled,
+                            onCheckedChange = { onStateChange(state.copy(fsrEnabled = it)) },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = Color.White,
+                                checkedTrackColor = Color(0xFFE11D48),
+                                uncheckedThumbColor = Color.White.copy(alpha = 0.7f),
+                                uncheckedTrackColor = Color(0xFF2A2A34)
+                            ),
+                            modifier = Modifier.testTag("switch_fsr")
+                        )
+                    }
+
+                    if (state.fsrEnabled) {
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Intensidad de Afilado RCAS",
+                                style = MaterialTheme.typography.bodySmall.copy(
+                                    color = Color.White.copy(alpha = 0.85f),
+                                    fontWeight = FontWeight.Medium
+                                )
+                            )
+                            Text(
+                                text = "${(state.fsrSharpness * 100).roundToInt()}%" + if (state.fsrSharpness in 0.73f..0.77f) " (Recomendado)" else "",
+                                style = MaterialTheme.typography.bodySmall.copy(
+                                    color = Color(0xFFFB7185),
+                                    fontWeight = FontWeight.Bold
+                                )
+                            )
+                        }
+
+                        Slider(
+                            value = state.fsrSharpness,
+                            onValueChange = { onStateChange(state.copy(fsrSharpness = it)) },
+                            valueRange = 0.0f..1.0f,
+                            colors = SliderDefaults.colors(
+                                thumbColor = Color(0xFFFB7185),
+                                activeTrackColor = Color(0xFFE11D48),
+                                inactiveTrackColor = Color.White.copy(alpha = 0.15f)
+                            ),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("slider_fsr_sharpness")
+                        )
+                    }
+                }
+            }
 
             Spacer(modifier = Modifier.height(18.dp))
         }
