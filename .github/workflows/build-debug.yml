@@ -47,15 +47,57 @@ jobs:
           java-version: '17'
 
       # 3. Configurar Android SDK, NDK y CMake para dependencias de C++
-      - name: Instalar Android NDK y CMake (C++)
+      - name: Instalar y Configurar Android NDK y CMake (C++)
         run: |
+          # 1. Determinar la raíz de instalación del Android SDK
+          ANDROID_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          echo "ANDROID_HOME=$ANDROID_ROOT" >> $GITHUB_ENV
+          echo "ANDROID_SDK_ROOT=$ANDROID_ROOT" >> $GITHUB_ENV
+          echo "Usando Android SDK en: $ANDROID_ROOT"
+
+          # 2. Localizar el binario sdkmanager en cmdline-tools o tools
+          SDKMANAGER=""
+          for candidate in \
+            "$ANDROID_ROOT/cmdline-tools/latest/bin/sdkmanager" \
+            "$ANDROID_ROOT/cmdline-tools/bin/sdkmanager" \
+            "$ANDROID_ROOT/tools/bin/sdkmanager"; do
+            if [[ -x "$candidate" ]]; then
+              SDKMANAGER="$candidate"
+              break
+            fi
+          done
+
+          # Búsqueda de respaldo si no estuviera en rutas típicas
+          if [[ -z "$SDKMANAGER" ]]; then
+            SDKMANAGER=$(find "$ANDROID_ROOT" -name "sdkmanager" -type f -perm -u+x 2>/dev/null | head -n 1)
+          fi
+
+          if [[ -z "$SDKMANAGER" ]]; then
+            echo "❌ ERROR: No se encontró la herramienta 'sdkmanager' en el runner."
+            exit 1
+          fi
+
+          echo "✅ sdkmanager localizado en: $SDKMANAGER"
+
+          # 3. Exportar las rutas de herramientas al PATH del runner
+          CMDLINE_DIR="$(dirname "$SDKMANAGER")"
+          echo "$CMDLINE_DIR" >> $GITHUB_PATH
+          echo "$ANDROID_ROOT/platform-tools" >> $GITHUB_PATH
+          export PATH="$CMDLINE_DIR:$ANDROID_ROOT/platform-tools:$PATH"
+
+          # 4. Aceptar licencias de forma segura (silenciando advertencias de pipe)
           echo "Aceptando licencias del Android SDK..."
-          yes | sdkmanager --licenses > /dev/null 2>&1 || true
-          echo "Instalando NDK r26d (26.3.11579264) y CMake 3.22.1..."
-          sdkmanager "ndk;26.3.11579264" "cmake;3.22.1"
-          echo "Configurando variables de entorno para compilación nativa..."
-          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/26.3.11579264" >> $GITHUB_ENV
-          echo "ANDROID_NDK_ROOT=$ANDROID_HOME/ndk/26.3.11579264" >> $GITHUB_ENV
+          yes 2>/dev/null | "$SDKMANAGER" --licenses > /dev/null 2>&1 || true
+
+          # 5. Instalar o verificar NDK r26d y CMake 3.22.1
+          echo "Verificando/Instalando NDK r26d (26.3.11579264) y CMake 3.22.1..."
+          "$SDKMANAGER" "ndk;26.3.11579264" "cmake;3.22.1"
+
+          # 6. Exportar variables de entorno para compilación nativa en C++
+          NDK_PATH="$ANDROID_ROOT/ndk/26.3.11579264"
+          echo "ANDROID_NDK_HOME=$NDK_PATH" >> $GITHUB_ENV
+          echo "ANDROID_NDK_ROOT=$NDK_PATH" >> $GITHUB_ENV
+          echo "✅ Android NDK configurado exitosamente en: $NDK_PATH"
 
       # 4. Configurar el Toolchain de Rust y los targets para Android (32 y 64 bits)
       - name: Configurar Rust Toolchain y Targets Android
