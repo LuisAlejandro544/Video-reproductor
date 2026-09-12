@@ -1,10 +1,12 @@
 package com.example.audio
 
+import android.util.Log
 import androidx.media3.common.C
 import androidx.media3.common.audio.AudioProcessor
 import androidx.media3.common.audio.BaseAudioProcessor
 import androidx.media3.common.util.UnstableApi
 import java.nio.ByteBuffer
+import java.util.Arrays
 
 /**
  * OboeAudioProcessor - Procesador de Audio Media3/ExoPlayer con salida hacia Google Oboe C++
@@ -12,24 +14,31 @@ import java.nio.ByteBuffer
  * Intercepta las tramas PCM 16-bit decodificadas del flujo de video.
  * - Si el motor seleccionado es OBOE: Envía los búferes de audio directamente al motor
  *   nativo C++ de Oboe para reproducción por hardware en ultra baja latencia (AAudio / OpenSL ES)
- *   y vacía la salida para silenciar el AudioTrack estándar.
+ *   y emite silencio a AudioTrack para preservar la sincronización de reloj A/V perfecta en ExoPlayer.
  * - Si el motor seleccionado es MEDIA3: Transfiere el búfer íntegramente hacia el AudioTrack
  *   estándar de Android.
  */
 @UnstableApi
 class OboeAudioProcessor : BaseAudioProcessor() {
 
+    private val TAG = "OboeAudioProcessor"
+
     var currentEngine: AudioEngineType = AudioEngineType.OBOE
         set(value) {
             field = value
-            if (value == AudioEngineType.OBOE) {
-                OboeAudioEngine.start()
-            } else {
-                OboeAudioEngine.stop()
+            try {
+                if (value == AudioEngineType.OBOE) {
+                    OboeAudioEngine.start()
+                } else {
+                    OboeAudioEngine.stop()
+                }
+            } catch (e: Throwable) {
+                Log.e(TAG, "Error alternando motor de audio a $value: ${e.message}")
             }
         }
 
     private var tempByteArray: ByteArray = ByteArray(0)
+    private var silenceByteArray: ByteArray = ByteArray(0)
 
     override fun onConfigure(inputAudioFormat: AudioProcessor.AudioFormat): AudioProcessor.AudioFormat {
         // Solo procesamos tramas PCM de 16 bits estándar
@@ -38,13 +47,17 @@ class OboeAudioProcessor : BaseAudioProcessor() {
         }
 
         // Inicializar el motor nativo de Oboe con la tasa de muestreo y número de canales del video
-        OboeAudioEngine.init(
-            sampleRate = inputAudioFormat.sampleRate,
-            channelCount = inputAudioFormat.channelCount
-        )
+        try {
+            OboeAudioEngine.init(
+                sampleRate = inputAudioFormat.sampleRate,
+                channelCount = inputAudioFormat.channelCount
+            )
 
-        if (currentEngine == AudioEngineType.OBOE) {
-            OboeAudioEngine.start()
+            if (currentEngine == AudioEngineType.OBOE) {
+                OboeAudioEngine.start()
+            }
+        } catch (e: Throwable) {
+            Log.e(TAG, "Error inicializando OboeAudioEngine: ${e.message}")
         }
 
         return inputAudioFormat
@@ -59,14 +72,23 @@ class OboeAudioProcessor : BaseAudioProcessor() {
             if (tempByteArray.size < remaining) {
                 tempByteArray = ByteArray(remaining)
             }
-            val position = inputBuffer.position()
             inputBuffer.get(tempByteArray, 0, remaining)
 
             // Enviar datos al motor nativo Oboe en C++
-            OboeAudioEngine.write(tempByteArray, 0, remaining)
+            try {
+                OboeAudioEngine.write(tempByteArray, 0, remaining)
+            } catch (e: Throwable) {
+                Log.e(TAG, "Error escribiendo en OboeAudioEngine: ${e.message}")
+            }
 
-            // Consumir el buffer y no emitir nada aguas abajo para evitar duplicación con AudioTrack
-            replaceOutputBuffer(0)
+            // Alimentar silencio PCM al sink estándar para mantener el reloj de hardware sincronizado
+            // en ExoPlayer sin generar duplicación de sonido con Oboe
+            if (silenceByteArray.size < remaining) {
+                silenceByteArray = ByteArray(remaining)
+            }
+            val outputBuffer = replaceOutputBuffer(remaining)
+            outputBuffer.put(silenceByteArray, 0, remaining)
+            outputBuffer.flip()
         } else {
             // Modo Media3: pasar los bytes directamente al pipeline estándar
             val outputBuffer = replaceOutputBuffer(remaining)
@@ -76,13 +98,21 @@ class OboeAudioProcessor : BaseAudioProcessor() {
     }
 
     override fun onFlush() {
-        if (currentEngine == AudioEngineType.OBOE) {
-            OboeAudioEngine.stop()
-            OboeAudioEngine.start()
+        try {
+            if (currentEngine == AudioEngineType.OBOE) {
+                OboeAudioEngine.stop()
+                OboeAudioEngine.start()
+            }
+        } catch (e: Throwable) {
+            Log.e(TAG, "Error en onFlush de OboeAudioProcessor: ${e.message}")
         }
     }
 
     override fun onReset() {
-        OboeAudioEngine.stop()
+        try {
+            OboeAudioEngine.stop()
+        } catch (e: Throwable) {
+            Log.e(TAG, "Error en onReset de OboeAudioProcessor: ${e.message}")
+        }
     }
 }

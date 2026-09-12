@@ -47,10 +47,10 @@ static const char* sVertexShaderSource = R"glsl(
 )glsl";
 
 // Fragment Shader: Postprocesamiento dinámico en tiempo real (Color EQ + Sharpening)
-static const char* sFragmentShaderSource = R"glsl(
-    #extension GL_OES_EGL_image_external : require
-    precision mediump float;
-
+static const char* sFragmentShaderSource =
+"#extension GL_OES_EGL_image_external : require\n"
+"precision mediump float;\n"
+R"glsl(
     varying vec2 vTextureCoord;
     uniform samplerExternalOES sTexture;
 

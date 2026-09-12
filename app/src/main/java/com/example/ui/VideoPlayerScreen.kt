@@ -1,6 +1,7 @@
 package com.example.ui
 
 import android.app.Activity
+import android.util.Log
 import android.view.ViewGroup
 import android.view.WindowManager
 import androidx.activity.compose.BackHandler
@@ -27,6 +28,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -48,11 +50,16 @@ import androidx.compose.material.icons.filled.VolumeDown
 import androidx.compose.material.icons.filled.VolumeMute
 import androidx.compose.material.icons.filled.VolumeOff
 import androidx.compose.material.icons.filled.VolumeUp
+import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
@@ -79,6 +86,7 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -229,31 +237,42 @@ fun VideoPlayerScreen(
     var gestureIndicatorType by remember { mutableStateOf<GestureIndicatorType?>(null) }
     var gestureIndicatorVisible by remember { mutableStateOf(false) }
     var gestureHideJob by remember { mutableStateOf<Job?>(null) }
+    var playbackErrorMessage by remember { mutableStateOf<String?>(null) }
 
     // Instancia de ExoPlayer personalizada con el Sink de Oboe C++
     val exoPlayer = remember(videoItem.uri) {
-        val audioSink = DefaultAudioSink.Builder(context)
-            .setAudioProcessors(arrayOf(oboeAudioProcessor))
-            .build()
+        val audioSink = try {
+            DefaultAudioSink.Builder(context)
+                .setAudioProcessors(arrayOf(oboeAudioProcessor))
+                .build()
+        } catch (e: Throwable) {
+            Log.e("VideoPlayerScreen", "Error configurando DefaultAudioSink con Oboe: ${e.message}")
+            null
+        }
 
         val renderersFactory = object : DefaultRenderersFactory(context) {
             override fun buildAudioSink(
                 context: android.content.Context,
                 enableFloatOutput: Boolean,
                 enableAudioTrackPlaybackParams: Boolean
-            ): AudioSink {
-                return audioSink
+            ): AudioSink? {
+                return audioSink ?: super.buildAudioSink(context, enableFloatOutput, enableAudioTrackPlaybackParams)
             }
         }
 
         ExoPlayer.Builder(context, renderersFactory).build().apply {
-            val mediaItem = MediaItem.fromUri(videoItem.uri)
-            setMediaItem(mediaItem)
-            if (initialPositionMs > 0L) {
-                seekTo(initialPositionMs)
+            try {
+                val mediaItem = MediaItem.fromUri(videoItem.uri)
+                setMediaItem(mediaItem)
+                if (initialPositionMs > 0L) {
+                    seekTo(initialPositionMs)
+                }
+                prepare()
+                playWhenReady = true
+            } catch (e: Throwable) {
+                Log.e("VideoPlayerScreen", "Error preparando ExoPlayer: ${e.message}", e)
+                playbackErrorMessage = e.localizedMessage ?: "Error al preparar el video"
             }
-            prepare()
-            playWhenReady = true
         }
     }
 
@@ -269,8 +288,17 @@ fun VideoPlayerScreen(
                 lp.screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
                 window.attributes = lp
             }
-            exoPlayer.release()
-            OboeAudioEngine.stop()
+            try {
+                exoPlayer.stop()
+                exoPlayer.release()
+            } catch (e: Throwable) {
+                Log.e("VideoPlayerScreen", "Error liberando ExoPlayer: ${e.message}")
+            }
+            try {
+                OboeAudioEngine.stop()
+            } catch (e: Throwable) {
+                Log.e("VideoPlayerScreen", "Error deteniendo OboeAudioEngine: ${e.message}")
+            }
         }
     }
 
@@ -279,24 +307,30 @@ fun VideoPlayerScreen(
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
                 Lifecycle.Event.ON_PAUSE -> {
-                    exoPlayer.pause()
-                    OboeAudioEngine.pause()
+                    try {
+                        exoPlayer.pause()
+                        OboeAudioEngine.pause()
+                    } catch (e: Throwable) {
+                        Log.w("VideoPlayerScreen", "Error pausando en ciclo de vida: ${e.message}")
+                    }
                 }
                 Lifecycle.Event.ON_RESUME -> {
-                    if (isPlaying) {
-                        exoPlayer.play()
-                        if (currentAudioEngine == AudioEngineType.OBOE) {
-                            OboeAudioEngine.start()
+                    try {
+                        if (isPlaying) {
+                            exoPlayer.play()
+                            if (currentAudioEngine == AudioEngineType.OBOE) {
+                                OboeAudioEngine.start()
+                            }
                         }
+                    } catch (e: Throwable) {
+                        Log.w("VideoPlayerScreen", "Error reanudando en ciclo de vida: ${e.message}")
                     }
                 }
                 else -> Unit
             }
-
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose {
-
             lifecycleOwner.lifecycle.removeObserver(observer)
         }
     }
@@ -308,6 +342,7 @@ fun VideoPlayerScreen(
                 isBuffering = playbackState == Player.STATE_BUFFERING
                 if (playbackState == Player.STATE_READY) {
                     totalDurationMs = exoPlayer.duration.coerceAtLeast(0L)
+                    playbackErrorMessage = null
                 } else if (playbackState == Player.STATE_ENDED) {
                     isPlaying = false
                 }
@@ -322,6 +357,13 @@ fun VideoPlayerScreen(
                     videoWidth = videoSize.width
                     videoHeight = videoSize.height
                 }
+            }
+
+            override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
+                Log.e("VideoPlayerScreen", "Error de reproducción ExoPlayer: ${error.message}", error)
+                isBuffering = false
+                isPlaying = false
+                playbackErrorMessage = error.localizedMessage ?: "No se pudo reproducir el video."
             }
         }
         exoPlayer.addListener(listener)
@@ -644,6 +686,75 @@ fun VideoPlayerScreen(
                 },
                 onDismiss = { showSpeedSheet = false }
             )
+        }
+
+        // Mensaje de Error Amigable si el archivo no puede decodificarse o no es accesible
+        if (playbackErrorMessage != null) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.85f))
+                    .padding(24.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Card(
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant
+                    ),
+                    shape = RoundedCornerShape(16.dp),
+                    modifier = Modifier.widthIn(max = 400.dp)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(24.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Warning,
+                            contentDescription = "Error",
+                            tint = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.size(48.dp)
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text(
+                            text = "No se pudo reproducir el video",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = playbackErrorMessage ?: "",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+                            textAlign = TextAlign.Center
+                        )
+                        Spacer(modifier = Modifier.height(24.dp))
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            OutlinedButton(
+                                onClick = onBackToHome
+                            ) {
+                                Text("Volver")
+                            }
+                            Button(
+                                onClick = {
+                                    playbackErrorMessage = null
+                                    try {
+                                        exoPlayer.seekTo(0)
+                                        exoPlayer.prepare()
+                                        exoPlayer.play()
+                                    } catch (e: Throwable) {
+                                        playbackErrorMessage = e.localizedMessage ?: "Reintento fallido"
+                                    }
+                                }
+                            ) {
+                                Text("Reintentar")
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }

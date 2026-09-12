@@ -14,36 +14,92 @@ import android.util.Log
 object NativeVideoFilter {
 
     private const val TAG = "NativeVideoFilter"
+    private var isLibraryLoaded = false
 
     init {
         try {
             System.loadLibrary("novaplayer_native")
+            isLibraryLoaded = true
             Log.i(TAG, "Biblioteca C++ novaplayer_native cargada para OpenGL ES.")
         } catch (e: UnsatisfiedLinkError) {
             Log.e(TAG, "Error cargando novaplayer_native: ${e.message}")
+            isLibraryLoaded = false
+        } catch (e: Throwable) {
+            Log.e(TAG, "Excepción inesperada cargando novaplayer_native: ${e.message}")
+            isLibraryLoaded = false
         }
     }
 
     /**
+     * Verifica si la biblioteca nativa C++ está disponible y cargada.
+     */
+    fun isAvailable(): Boolean = isLibraryLoaded
+
+    /**
      * Inicializa los shaders GLSL y compila el programa en GPU.
      */
-    external fun nativeInit(): Boolean
+    fun nativeInit(): Boolean {
+        if (!isLibraryLoaded) return false
+        return try {
+            internalNativeInit()
+        } catch (e: Throwable) {
+            Log.e(TAG, "Error invocando internalNativeInit: ${e.message}")
+            false
+        }
+    }
 
     /**
      * Renderiza el frame actual de video con postprocesado en GPU.
-     *
-     * @param textureId Identificador de la textura GL_TEXTURE_EXTERNAL_OES
-     * @param stMatrix Matriz de transformación de coordenadas de SurfaceTexture
-     * @param mvpMatrix Matriz de Modelo-Vista-Proyección (control de aspecto/escalado)
-     * @param brightness Brillo [-0.5f, 0.5f] (0.0f = neutro)
-     * @param contrast Contraste [0.5f, 2.0f] (1.0f = neutro)
-     * @param saturation Saturación [0.0f, 2.0f] (1.0f = neutro)
-     * @param gamma Corrección Gamma [0.5f, 2.0f] (1.0f = neutro)
-     * @param sharpness Realce de bordes / Nitidez [0.0f, 1.5f] (0.0f = desactivado)
-     * @param texWidth Ancho de la textura para el kernel de nitidez
-     * @param texHeight Alto de la textura para el kernel de nitidez
      */
-    external fun nativeRender(
+    fun nativeRender(
+        textureId: Int,
+        stMatrix: FloatArray,
+        mvpMatrix: FloatArray,
+        brightness: Float,
+        contrast: Float,
+        saturation: Float,
+        gamma: Float,
+        sharpness: Float,
+        texWidth: Float,
+        texHeight: Float
+    ): Boolean {
+        if (!isLibraryLoaded) return false
+        return try {
+            internalNativeRender(
+                textureId,
+                stMatrix,
+                mvpMatrix,
+                brightness,
+                contrast,
+                saturation,
+                gamma,
+                sharpness,
+                texWidth,
+                texHeight
+            )
+        } catch (e: Throwable) {
+            Log.e(TAG, "Error invocando internalNativeRender: ${e.message}")
+            false
+        }
+    }
+
+    /**
+     * Libera los recursos de GPU asociados al programa de sombreado.
+     */
+    fun nativeRelease() {
+        if (!isLibraryLoaded) return
+        try {
+            internalNativeRelease()
+        } catch (e: Throwable) {
+            Log.e(TAG, "Error invocando internalNativeRelease: ${e.message}")
+        }
+    }
+
+    @JvmStatic
+    private external fun internalNativeInit(): Boolean
+
+    @JvmStatic
+    private external fun internalNativeRender(
         textureId: Int,
         stMatrix: FloatArray,
         mvpMatrix: FloatArray,
@@ -56,8 +112,6 @@ object NativeVideoFilter {
         texHeight: Float
     ): Boolean
 
-    /**
-     * Libera los recursos de GPU asociados al programa de sombreado.
-     */
-    external fun nativeRelease()
+    @JvmStatic
+    private external fun internalNativeRelease()
 }

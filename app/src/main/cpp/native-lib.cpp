@@ -188,18 +188,26 @@ Java_com_example_audio_OboeAudioEngine_nativeGetFramesWritten(
 // ============================================================================
 
 JNIEXPORT jboolean JNICALL
-Java_com_example_opengl_NativeVideoFilter_nativeInit(
+Java_com_example_opengl_NativeVideoFilter_internalNativeInit(
     JNIEnv* env,
-    jobject /* this */
+    jclass /* clazz */
 ) {
     auto engine = getVideoColorEngine();
     return engine ? static_cast<jboolean>(engine->init()) : JNI_FALSE;
 }
 
 JNIEXPORT jboolean JNICALL
-Java_com_example_opengl_NativeVideoFilter_nativeRender(
+Java_com_example_opengl_NativeVideoFilter_nativeInit(
     JNIEnv* env,
-    jobject /* this */,
+    jobject /* this */
+) {
+    return Java_com_example_opengl_NativeVideoFilter_internalNativeInit(env, nullptr);
+}
+
+JNIEXPORT jboolean JNICALL
+Java_com_example_opengl_NativeVideoFilter_internalNativeRender(
+    JNIEnv* env,
+    jclass /* clazz */,
     jint textureId,
     jfloatArray stMatrix,
     jfloatArray mvpMatrix,
@@ -219,23 +227,59 @@ Java_com_example_opengl_NativeVideoFilter_nativeRender(
     jfloat* stMat = env->GetFloatArrayElements(stMatrix, nullptr);
     jfloat* mvpMat = env->GetFloatArrayElements(mvpMatrix, nullptr);
 
-    bool success = engine->render(
-        static_cast<GLuint>(textureId),
-        stMat,
-        mvpMat,
-        brightness,
-        contrast,
-        saturation,
-        gamma,
-        sharpness,
-        texWidth,
-        texHeight
-    );
+    bool success = false;
+    if (stMat && mvpMat) {
+        success = engine->render(
+            static_cast<GLuint>(textureId),
+            stMat,
+            mvpMat,
+            brightness,
+            contrast,
+            saturation,
+            gamma,
+            sharpness,
+            texWidth,
+            texHeight
+        );
+    }
 
-    env->ReleaseFloatArrayElements(stMatrix, stMat, JNI_ABORT);
-    env->ReleaseFloatArrayElements(mvpMatrix, mvpMat, JNI_ABORT);
+    if (stMat) env->ReleaseFloatArrayElements(stMatrix, stMat, JNI_ABORT);
+    if (mvpMat) env->ReleaseFloatArrayElements(mvpMatrix, mvpMat, JNI_ABORT);
 
     return success ? JNI_TRUE : JNI_FALSE;
+}
+
+JNIEXPORT jboolean JNICALL
+Java_com_example_opengl_NativeVideoFilter_nativeRender(
+    JNIEnv* env,
+    jobject /* this */,
+    jint textureId,
+    jfloatArray stMatrix,
+    jfloatArray mvpMatrix,
+    jfloat brightness,
+    jfloat contrast,
+    jfloat saturation,
+    jfloat gamma,
+    jfloat sharpness,
+    jfloat texWidth,
+    jfloat texHeight
+) {
+    return Java_com_example_opengl_NativeVideoFilter_internalNativeRender(
+        env, nullptr, textureId, stMatrix, mvpMatrix, brightness, contrast,
+        saturation, gamma, sharpness, texWidth, texHeight
+    );
+}
+
+JNIEXPORT void JNICALL
+Java_com_example_opengl_NativeVideoFilter_internalNativeRelease(
+    JNIEnv* env,
+    jclass /* clazz */
+) {
+    std::lock_guard<std::mutex> lock(sColorEngineMutex);
+    if (sVideoColorEngine) {
+        sVideoColorEngine->release();
+        sVideoColorEngine.reset();
+    }
 }
 
 JNIEXPORT void JNICALL
@@ -243,11 +287,7 @@ Java_com_example_opengl_NativeVideoFilter_nativeRelease(
     JNIEnv* env,
     jobject /* this */
 ) {
-    std::lock_guard<std::mutex> lock(sColorEngineMutex);
-    if (sVideoColorEngine) {
-        sVideoColorEngine->release();
-        sVideoColorEngine.reset();
-    }
+    Java_com_example_opengl_NativeVideoFilter_internalNativeRelease(env, nullptr);
 }
 
 } // extern "C"

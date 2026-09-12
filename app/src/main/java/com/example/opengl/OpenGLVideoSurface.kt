@@ -6,14 +6,22 @@ import android.opengl.GLES11Ext
 import android.opengl.GLES20
 import android.opengl.GLSurfaceView
 import android.opengl.Matrix
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import android.view.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.media3.exoplayer.ExoPlayer
 import com.example.ui.AspectRatioMode
 import javax.microedition.khronos.egl.EGLConfig
@@ -31,6 +39,7 @@ class OpenGLVideoRenderer(
 ) : GLSurfaceView.Renderer, SurfaceTexture.OnFrameAvailableListener {
 
     private val TAG = "OpenGLVideoRenderer"
+    private val mainHandler = Handler(Looper.getMainLooper())
 
     private var textureId: Int = 0
     private var surfaceTexture: SurfaceTexture? = null
@@ -75,74 +84,99 @@ class OpenGLVideoRenderer(
     }
 
     override fun onSurfaceCreated(gl: GL10?, config: EGLConfig?) {
-        Log.i(TAG, "onSurfaceCreated: Inicializando pipeline OpenGL ES nativo...")
-        GLES20.glClearColor(0.0f, 0.0f, 0.0f, 1.0f)
+        try {
+            Log.i(TAG, "onSurfaceCreated: Inicializando pipeline OpenGL ES nativo...")
+            GLES20.glClearColor(0.0f, 0.0f, 0.0f, 1.0f)
 
-        // Inicializar motor de shaders nativo en C++
-        NativeVideoFilter.nativeInit()
+            // Inicializar motor de shaders nativo en C++
+            try {
+                NativeVideoFilter.nativeInit()
+            } catch (e: Throwable) {
+                Log.e(TAG, "Error inicializando NativeVideoFilter: ${e.message}")
+            }
 
-        // Generar textura externa OES para el stream de decodificación por hardware
-        val textures = IntArray(1)
-        GLES20.glGenTextures(1, textures, 0)
-        textureId = textures[0]
+            // Generar textura externa OES para el stream de decodificación por hardware
+            val textures = IntArray(1)
+            GLES20.glGenTextures(1, textures, 0)
+            textureId = textures[0]
 
-        GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, textureId)
-        GLES20.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_LINEAR)
-        GLES20.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES20.GL_TEXTURE_MAG_FILTER, GLES20.GL_LINEAR)
-        GLES20.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES20.GL_TEXTURE_WRAP_S, GLES20.GL_CLAMP_TO_EDGE)
-        GLES20.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES20.GL_TEXTURE_WRAP_T, GLES20.GL_CLAMP_TO_EDGE)
+            GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, textureId)
+            GLES20.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_LINEAR)
+            GLES20.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES20.GL_TEXTURE_MAG_FILTER, GLES20.GL_LINEAR)
+            GLES20.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES20.GL_TEXTURE_WRAP_S, GLES20.GL_CLAMP_TO_EDGE)
+            GLES20.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES20.GL_TEXTURE_WRAP_T, GLES20.GL_CLAMP_TO_EDGE)
 
-        // Crear SurfaceTexture asociada a la textura GPU y envolver en un Surface de Android
-        val st = SurfaceTexture(textureId)
-        st.setOnFrameAvailableListener(this)
-        surfaceTexture = st
+            // Crear SurfaceTexture asociada a la textura GPU y envolver en un Surface de Android
+            val st = SurfaceTexture(textureId)
+            st.setOnFrameAvailableListener(this)
+            surfaceTexture = st
 
-        val surface = Surface(st)
-        videoSurface = surface
-        onSurfaceCreatedCallback(surface)
+            val surface = Surface(st)
+            videoSurface = surface
 
-        Matrix.setIdentityM(stMatrix, 0)
-        Matrix.setIdentityM(mvpMatrix, 0)
+            // CRÍTICO: La asignación de superficie a ExoPlayer DEBE realizarse en el hilo principal
+            // (Main Looper) para evitar una IllegalStateException que bloquee la aplicación.
+            mainHandler.post {
+                try {
+                    onSurfaceCreatedCallback(surface)
+                } catch (e: Throwable) {
+                    Log.e(TAG, "Error en onSurfaceCreatedCallback en el hilo principal: ${e.message}", e)
+                }
+            }
+
+            Matrix.setIdentityM(stMatrix, 0)
+            Matrix.setIdentityM(mvpMatrix, 0)
+        } catch (e: Throwable) {
+            Log.e(TAG, "Error crítico durante onSurfaceCreated: ${e.message}", e)
+        }
     }
 
     override fun onSurfaceChanged(gl: GL10?, width: Int, height: Int) {
         Log.i(TAG, "onSurfaceChanged: ${width}x${height}")
         surfaceWidth = if (width > 0) width else 1
         surfaceHeight = if (height > 0) height else 1
-        GLES20.glViewport(0, 0, surfaceWidth, surfaceHeight)
+        try {
+            GLES20.glViewport(0, 0, surfaceWidth, surfaceHeight)
+        } catch (e: Throwable) {
+            Log.w(TAG, "Error estableciendo glViewport: ${e.message}")
+        }
     }
 
     override fun onDrawFrame(gl: GL10?) {
-        GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT or GLES20.GL_DEPTH_BUFFER_BIT)
+        try {
+            GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT or GLES20.GL_DEPTH_BUFFER_BIT)
 
-        val st = surfaceTexture ?: return
-        synchronized(this) {
-            try {
-                st.updateTexImage()
-                st.getTransformMatrix(stMatrix)
-            } catch (e: Exception) {
-                Log.w(TAG, "Frame drop transitorio al actualizar textura: ${e.message}")
-                return
+            val st = surfaceTexture ?: return
+            synchronized(this) {
+                try {
+                    st.updateTexImage()
+                    st.getTransformMatrix(stMatrix)
+                } catch (e: Exception) {
+                    Log.w(TAG, "Frame drop transitorio al actualizar textura: ${e.message}")
+                    return
+                }
             }
+
+            // Calcular matriz de transformación para modo de aspecto (FIT, ZOOM, FILL)
+            calculateMvpMatrix()
+
+            // Delegar el renderizado al shader C++
+            val currentEq = equalizerState
+            NativeVideoFilter.nativeRender(
+                textureId = textureId,
+                stMatrix = stMatrix,
+                mvpMatrix = mvpMatrix,
+                brightness = currentEq.brightness,
+                contrast = currentEq.contrast,
+                saturation = currentEq.saturation,
+                gamma = currentEq.gamma,
+                sharpness = currentEq.sharpness,
+                texWidth = videoWidth.toFloat(),
+                texHeight = videoHeight.toFloat()
+            )
+        } catch (e: Throwable) {
+            Log.w(TAG, "Excepción transitoria en onDrawFrame: ${e.message}")
         }
-
-        // Calcular matriz de transformación para modo de aspecto (FIT, ZOOM, FILL)
-        calculateMvpMatrix()
-
-        // Delegar el renderizado al shader C++
-        val currentEq = equalizerState
-        NativeVideoFilter.nativeRender(
-            textureId = textureId,
-            stMatrix = stMatrix,
-            mvpMatrix = mvpMatrix,
-            brightness = currentEq.brightness,
-            contrast = currentEq.contrast,
-            saturation = currentEq.saturation,
-            gamma = currentEq.gamma,
-            sharpness = currentEq.sharpness,
-            texWidth = videoWidth.toFloat(),
-            texHeight = videoHeight.toFloat()
-        )
     }
 
     private fun calculateMvpMatrix() {
@@ -183,16 +217,32 @@ class OpenGLVideoRenderer(
     }
 
     override fun onFrameAvailable(st: SurfaceTexture?) {
-        glSurfaceView?.requestRender()
+        try {
+            glSurfaceView?.requestRender()
+        } catch (e: Throwable) {
+            Log.w(TAG, "Error en requestRender: ${e.message}")
+        }
     }
 
     fun release() {
         try {
-            videoSurface?.release()
-            videoSurface = null
-            surfaceTexture?.release()
-            surfaceTexture = null
-            NativeVideoFilter.nativeRelease()
+            glSurfaceView?.queueEvent {
+                try {
+                    NativeVideoFilter.nativeRelease()
+                } catch (e: Throwable) {
+                    Log.e(TAG, "Error liberando recursos nativos en GLThread: ${e.message}")
+                }
+            }
+            mainHandler.post {
+                try {
+                    videoSurface?.release()
+                    videoSurface = null
+                    surfaceTexture?.release()
+                    surfaceTexture = null
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error liberando recursos de superficie: ${e.message}")
+                }
+            }
         } catch (e: Exception) {
             Log.e(TAG, "Error liberando recursos OpenGL: ${e.message}")
         }
@@ -211,11 +261,17 @@ fun OpenGLVideoPlayerView(
     videoHeight: Int,
     modifier: Modifier = Modifier
 ) {
-    val context = LocalContext.current
+    val mainHandler = remember { Handler(Looper.getMainLooper()) }
 
     val renderer = remember {
         OpenGLVideoRenderer { surface ->
-            player.setVideoSurface(surface)
+            mainHandler.post {
+                try {
+                    player.setVideoSurface(surface)
+                } catch (e: Throwable) {
+                    Log.e("OpenGLVideoPlayerView", "Error asignando superficie a ExoPlayer: ${e.message}", e)
+                }
+            }
         }
     }
 
@@ -224,9 +280,44 @@ fun OpenGLVideoPlayerView(
     renderer.updateAspectRatioMode(aspectRatioMode)
     renderer.updateVideoDimensions(videoWidth, videoHeight)
 
-    DisposableEffect(Unit) {
+    var glSurfaceViewRef by remember { mutableStateOf<GLSurfaceView?>(null) }
+    val lifecycleOwner = LocalLifecycleOwner.current
+
+    DisposableEffect(lifecycleOwner, glSurfaceViewRef) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_PAUSE -> {
+                    try {
+                        glSurfaceViewRef?.onPause()
+                    } catch (e: Throwable) {
+                        Log.w("OpenGLVideoPlayerView", "Error en onPause de GLSurfaceView: ${e.message}")
+                    }
+                }
+                Lifecycle.Event.ON_RESUME -> {
+                    try {
+                        glSurfaceViewRef?.onResume()
+                    } catch (e: Throwable) {
+                        Log.w("OpenGLVideoPlayerView", "Error en onResume de GLSurfaceView: ${e.message}")
+                    }
+                }
+                else -> Unit
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
         onDispose {
-            player.setVideoSurface(null)
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+
+    DisposableEffect(player) {
+        onDispose {
+            mainHandler.post {
+                try {
+                    player.clearVideoSurface()
+                } catch (e: Throwable) {
+                    Log.w("OpenGLVideoPlayerView", "Error limpiando superficie en ExoPlayer: ${e.message}")
+                }
+            }
             renderer.release()
         }
     }
@@ -238,13 +329,18 @@ fun OpenGLVideoPlayerView(
                 setRenderer(renderer)
                 renderMode = GLSurfaceView.RENDERMODE_WHEN_DIRTY
                 renderer.attachView(this)
+                glSurfaceViewRef = this
             }
         },
         update = { view ->
             renderer.updateEqualizer(equalizerState)
             renderer.updateAspectRatioMode(aspectRatioMode)
             renderer.updateVideoDimensions(videoWidth, videoHeight)
-            view.requestRender()
+            try {
+                view.requestRender()
+            } catch (e: Throwable) {
+                Log.w("OpenGLVideoPlayerView", "Error solicitando renderizado: ${e.message}")
+            }
         },
         modifier = modifier
     )
