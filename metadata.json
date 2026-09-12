@@ -1,0 +1,7 @@
+{
+  "name": "Nova Video Player",
+  "description": "Reproductor de video universal avanzado para Android, que permite reproducir videos locales desde la galería o explorador de archivos nativo con interfaz fluida.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+

@@ -1,0 +1,112 @@
+name: Build Debug APK
+
+# ==============================================================================
+# Flujo de Integración Continua (CI/CD) - Nova Video Player
+# ==============================================================================
+# Este flujo descarga el código completo del repositorio, prepara el entorno
+# con las herramientas de C++ (NDK 26d y CMake) y Rust (targets Android),
+# genera desde cero la firma digital obligatoria ('debug.keystore') sin requerir
+# interacción manual, y compila un APK en modo Debug limpio (SIN CACHÉ).
+#
+# Al finalizar, publica el APK generado como artefacto listo para descargar
+# directamente desde un teléfono móvil o navegador web.
+# ==============================================================================
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    paths-ignore:
+      - '**.md'
+      - '.gitignore'
+  pull_request:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+    # Permite ejecutar manualmente la compilación desde la interfaz móvil de GitHub
+
+jobs:
+  build-debug:
+    name: Compilar APK Debug (C++, Rust & OpenGL ES)
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. Descargar el código fuente completo del repositorio
+      - name: Descargar código fuente del repositorio
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      # 2. Configurar Java JDK 17 (Temurin)
+      - name: Configurar Java JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      # 3. Configurar Android SDK, NDK y CMake para dependencias de C++
+      - name: Instalar Android NDK y CMake (C++)
+        run: |
+          echo "Aceptando licencias del Android SDK..."
+          yes | sdkmanager --licenses > /dev/null 2>&1 || true
+          echo "Instalando NDK r26d (26.3.11579264) y CMake 3.22.1..."
+          sdkmanager "ndk;26.3.11579264" "cmake;3.22.1"
+          echo "Configurando variables de entorno para compilación nativa..."
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/26.3.11579264" >> $GITHUB_ENV
+          echo "ANDROID_NDK_ROOT=$ANDROID_HOME/ndk/26.3.11579264" >> $GITHUB_ENV
+
+      # 4. Configurar el Toolchain de Rust y los targets para Android (32 y 64 bits)
+      - name: Configurar Rust Toolchain y Targets Android
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android,i686-linux-android
+
+      # 5. Verificar y compilar el módulo Rust del proyecto
+      - name: Compilar y verificar módulo Rust (rust_core)
+        run: |
+          echo "Compilando módulo nativo Rust..."
+          cd rust_core
+          cargo check --verbose
+
+      # 6. Configurar Gradle SIN CACHÉ (Requerimiento explícito: compilación limpia)
+      - name: Configurar Gradle (Caché Desactivada)
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-disabled: true
+
+      # 7. Forzar la generación desde cero de la firma debug (debug.keystore)
+      - name: Generar firma debug desde cero (Sin esperas interactivas)
+        run: |
+          chmod +x scripts/generate_debug_keystore.sh
+          ./scripts/generate_debug_keystore.sh
+
+      # 8. Compilar el APK en variante Debug (sin caché de compilador)
+      - name: Compilar APK Debug con Gradle
+        run: |
+          echo "Iniciando compilación del APK Debug (C++, Rust, Oboe y OpenGL)..."
+          gradle assembleDebug --no-build-cache --no-daemon --stacktrace
+
+      # 9. Localizar y verificar el APK generado
+      - name: Verificar archivo APK generado
+        id: verify-apk
+        run: |
+          APK_PATH=$(find app/build/outputs/apk/debug -name "*.apk" | head -n 1)
+          if [[ -n "$APK_PATH" && -f "$APK_PATH" ]]; then
+            echo "✅ APK Debug encontrado: $APK_PATH"
+            ls -lh "$APK_PATH"
+            echo "apk_path=$APK_PATH" >> $GITHUB_OUTPUT
+          else
+            echo "❌ ERROR: No se encontró el APK generado en app/build/outputs/apk/debug/"
+            exit 1
+          fi
+
+      # 10. Subir el APK Debug como artefacto de descarga directa
+      - name: Publicar APK Debug como Artefacto
+        uses: actions/upload-artifact@v4
+        with:
+          name: NovaPlayer-Debug-APK
+          path: ${{ steps.verify-apk.outputs.apk_path }}
+          if-no-files-found: error
+          retention-days: 30

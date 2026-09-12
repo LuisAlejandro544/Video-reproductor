@@ -1,0 +1,33 @@
+# ==============================================================================
+# Cargo.toml - Módulo Nativo en Rust para Nova Video Player
+#
+# Propósito:
+# Define la configuración de empaquetado y dependencias del motor en Rust para
+# procesamiento seguro de datos multimedia, análisis de flujos y operaciones
+# concurrentes sin riesgo de fallos de memoria (memory safety).
+#
+# Todas las dependencias seleccionadas utilizan licencias permisivas (MIT / Apache 2.0),
+# garantizando total libertad de distribución sin imponer términos de código abierto.
+# ==============================================================================
+
+[package]
+name = "novaplayer_rust"
+version = "0.1.0"
+edition = "2021"
+authors = ["Nova Player Team"]
+description = "Módulo de procesamiento seguro en Rust para Nova Video Player"
+
+[lib]
+name = "novaplayer_rust"
+# Genera tanto biblioteca estática (.a) para enlace con C++ como compartida (.so) para carga directa
+crate-type = ["cdylib", "staticlib"]
+
+[dependencies]
+# Puente JNI con Android (Java Native Interface en Rust) - Licencia Apache 2.0 / MIT
+jni = { version = "0.21.1", default-features = false }
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
