@@ -25,8 +25,10 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
@@ -343,19 +345,36 @@ fun VideoPlayerScreen(
                 if (playbackState == Player.STATE_READY) {
                     totalDurationMs = exoPlayer.duration.coerceAtLeast(0L)
                     playbackErrorMessage = null
+                    // Sincronizar el estado determinista de reproducción cuando el reproductor esté listo
+                    isPlaying = exoPlayer.playWhenReady
                 } else if (playbackState == Player.STATE_ENDED) {
                     isPlaying = false
                 }
             }
 
+            override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+                // Actualiza el icono de inmediato según la intención real de reproducción
+                isPlaying = playWhenReady && exoPlayer.playbackState != Player.STATE_ENDED
+            }
+
             override fun onIsPlayingChanged(playing: Boolean) {
-                isPlaying = playing
+                // Solo actualizar si no estamos en buffering activo, para evitar que una pausa transitoria de red desactive el icono
+                if (!isBuffering && exoPlayer.playbackState != Player.STATE_ENDED) {
+                    isPlaying = playing
+                }
             }
 
             override fun onVideoSizeChanged(videoSize: androidx.media3.common.VideoSize) {
                 if (videoSize.width > 0 && videoSize.height > 0) {
-                    videoWidth = videoSize.width
-                    videoHeight = videoSize.height
+                    // Si el video fue grabado en vertical con metadatos de rotación (90° o 270°),
+                    // intercambiar ancho y alto para calcular la relación de aspecto correcta
+                    if (videoSize.unappliedRotationDegrees == 90 || videoSize.unappliedRotationDegrees == 270) {
+                        videoWidth = videoSize.height
+                        videoHeight = videoSize.width
+                    } else {
+                        videoWidth = videoSize.width
+                        videoHeight = videoSize.height
+                    }
                 }
             }
 
@@ -561,12 +580,15 @@ fun VideoPlayerScreen(
                         lastInteractionTime = System.currentTimeMillis()
                     }
             ) {
+                val isPortrait = containerHeight > containerWidth || (containerWidth in 1..600)
+
                 // Barra superior: Título, tamaño, selector de fuente, aspecto y motor de audio
                 TopControlsBar(
                     title = videoItem.name,
                     size = videoItem.formattedSize,
                     aspectModeLabel = currentAspectMode.label,
                     selectedAudioEngine = currentAudioEngine,
+                    isPortrait = isPortrait,
                     onBack = onBackToHome,
                     onChangeSource = onChangeVideoSource,
                     onToggleAspectMode = {
@@ -588,10 +610,9 @@ fun VideoPlayerScreen(
                 CenterPlaybackControls(
                     isPlaying = isPlaying,
                     onTogglePlayPause = {
-                        if (isPlaying) {
-                            exoPlayer.pause()
-                            OboeAudioEngine.pause()
-                        } else {
+                        // Conmutación inmediata determinista basada en playWhenReady para respuesta al primer toque
+                        val willPlay = !exoPlayer.playWhenReady || exoPlayer.playbackState == Player.STATE_ENDED
+                        if (willPlay) {
                             if (exoPlayer.playbackState == Player.STATE_ENDED) {
                                 exoPlayer.seekTo(0)
                             }
@@ -599,8 +620,12 @@ fun VideoPlayerScreen(
                             if (currentAudioEngine == AudioEngineType.OBOE) {
                                 OboeAudioEngine.start()
                             }
+                            isPlaying = true
+                        } else {
+                            exoPlayer.pause()
+                            OboeAudioEngine.pause()
+                            isPlaying = false
                         }
-                        isPlaying = !isPlaying
                         lastInteractionTime = System.currentTimeMillis()
                     },
                     onRewind10 = {
@@ -760,7 +785,7 @@ fun VideoPlayerScreen(
 }
 
 /**
- * Barra superior de controles del reproductor.
+ * Barra superior de controles del reproductor adaptada tanto para modo vertical como horizontal.
  */
 @Composable
 private fun TopControlsBar(
@@ -768,6 +793,7 @@ private fun TopControlsBar(
     size: String,
     aspectModeLabel: String,
     selectedAudioEngine: AudioEngineType,
+    isPortrait: Boolean,
     onBack: () -> Unit,
     onChangeSource: () -> Unit,
     onToggleAspectMode: () -> Unit,
@@ -779,142 +805,304 @@ private fun TopControlsBar(
             .fillMaxWidth()
             .background(
                 Brush.verticalGradient(
-                    colors = listOf(Color.Black.copy(alpha = 0.85f), Color.Transparent)
+                    colors = listOf(Color.Black.copy(alpha = 0.88f), Color.Transparent)
                 )
             )
-            .padding(horizontal = 12.dp, vertical = 12.dp)
+            .statusBarsPadding()
+            .padding(horizontal = 12.dp, vertical = 8.dp)
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            IconButton(
-                onClick = onBack,
-                modifier = Modifier.testTag("player_back_button")
+        if (isPortrait) {
+            // Diseño optimizado para MODO VERTICAL (Portrait)
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = "Volver a inicio",
-                    tint = Color.White
-                )
-            }
+                // Fila 1: Botón Volver + Título y Tamaño (con todo el ancho disponible) + Botón Ajustes
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    IconButton(
+                        onClick = onBack,
+                        modifier = Modifier.testTag("player_back_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Volver a inicio",
+                            tint = Color.White
+                        )
+                    }
 
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.titleMedium.copy(
-                        fontWeight = FontWeight.SemiBold,
-                        color = Color.White
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = title,
+                            style = MaterialTheme.typography.titleMedium.copy(
+                                fontWeight = FontWeight.SemiBold,
+                                color = Color.White
+                            ),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        if (size.isNotEmpty()) {
+                            Text(
+                                text = "Tamaño: $size",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    color = Color.White.copy(alpha = 0.7f)
+                                )
+                            )
+                        }
+                    }
+
+                    // Acceso directo a Ajustes
+                    IconButton(
+                        onClick = onOpenSettings,
+                        modifier = Modifier.testTag("player_settings_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Settings,
+                            contentDescription = "Ajustes del reproductor",
+                            tint = Color.White
+                        )
+                    }
+                }
+
+                // Fila 2: Chips de acciones rápidas (Motor de audio, Cambiar fuente, Modo de aspecto)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 48.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    // Chip Motor de Audio
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = if (selectedAudioEngine == AudioEngineType.OBOE) {
+                            Color(0xFF0284C7).copy(alpha = 0.25f)
+                        } else {
+                            Color.White.copy(alpha = 0.15f)
+                        },
+                        border = androidx.compose.foundation.BorderStroke(
+                            1.dp,
+                            if (selectedAudioEngine == AudioEngineType.OBOE) Color(0xFF38BDF8) else Color.White.copy(alpha = 0.3f)
+                        ),
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable(onClick = onOpenSettings)
+                            .testTag("player_audio_engine_badge")
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Audiotrack,
+                                contentDescription = "Motor de audio",
+                                tint = if (selectedAudioEngine == AudioEngineType.OBOE) Color(0xFF38BDF8) else Color.White,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Text(
+                                text = if (selectedAudioEngine == AudioEngineType.OBOE) "Oboe C++" else "Media3",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (selectedAudioEngine == AudioEngineType.OBOE) Color(0xFF38BDF8) else Color.White
+                                )
+                            )
+                        }
+                    }
+
+                    // Botón Cambiar Video
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = Color.White.copy(alpha = 0.15f),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.25f)),
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable(onClick = onChangeSource)
+                            .testTag("player_change_source_button")
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.SwapHoriz,
+                                contentDescription = "Cambiar video",
+                                tint = Color.White,
+                                modifier = Modifier.size(15.dp)
+                            )
+                            Text(
+                                text = "Cambiar",
+                                style = MaterialTheme.typography.labelSmall.copy(color = Color.White)
+                            )
+                        }
+                    }
+
+                    // Botón Modo de Pantalla (Aspect Ratio)
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = Color.White.copy(alpha = 0.15f),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.25f)),
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable(onClick = onToggleAspectMode)
+                            .testTag("player_aspect_mode_button")
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.AspectRatio,
+                                contentDescription = "Modo de pantalla",
+                                tint = Color.White,
+                                modifier = Modifier.size(15.dp)
+                            )
+                            Text(
+                                text = aspectModeLabel,
+                                style = MaterialTheme.typography.labelSmall.copy(color = Color.White)
+                            )
+                        }
+                    }
+                }
+            }
+        } else {
+            // Diseño en MODO HORIZONTAL (Landscape)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                IconButton(
+                    onClick = onBack,
+                    modifier = Modifier.testTag("player_back_button")
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = "Volver a inicio",
+                        tint = Color.White
+                    )
+                }
+
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color.White
+                        ),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    if (size.isNotEmpty()) {
+                        Text(
+                            text = "Tamaño: $size",
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                color = Color.White.copy(alpha = 0.7f)
+                            )
+                        )
+                    }
+                }
+
+                // Chip indicador del motor de audio activo (Oboe C++ / Media3)
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = if (selectedAudioEngine == AudioEngineType.OBOE) {
+                        Color(0xFF0284C7).copy(alpha = 0.25f)
+                    } else {
+                        Color.White.copy(alpha = 0.15f)
+                    },
+                    border = androidx.compose.foundation.BorderStroke(
+                        1.dp,
+                        if (selectedAudioEngine == AudioEngineType.OBOE) Color(0xFF38BDF8) else Color.White.copy(alpha = 0.3f)
                     ),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                if (size.isNotEmpty()) {
-                    Text(
-                        text = "Tamaño: $size",
-                        style = MaterialTheme.typography.labelSmall.copy(
-                            color = Color.White.copy(alpha = 0.7f)
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .clickable(onClick = onOpenSettings)
+                        .testTag("player_audio_engine_badge")
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Audiotrack,
+                            contentDescription = "Motor de audio",
+                            tint = if (selectedAudioEngine == AudioEngineType.OBOE) Color(0xFF38BDF8) else Color.White,
+                            modifier = Modifier.size(15.dp)
                         )
-                    )
+                        Text(
+                            text = if (selectedAudioEngine == AudioEngineType.OBOE) "Oboe C++" else "Media3",
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontWeight = FontWeight.Bold,
+                                color = if (selectedAudioEngine == AudioEngineType.OBOE) Color(0xFF38BDF8) else Color.White
+                            )
+                        )
+                    }
                 }
-            }
 
-            // Chip indicador del motor de audio activo (Oboe C++ / Media3)
-            Surface(
-                shape = RoundedCornerShape(8.dp),
-                color = if (selectedAudioEngine == AudioEngineType.OBOE) {
-                    Color(0xFF0284C7).copy(alpha = 0.25f)
-                } else {
-                    Color.White.copy(alpha = 0.15f)
-                },
-                border = androidx.compose.foundation.BorderStroke(
-                    1.dp,
-                    if (selectedAudioEngine == AudioEngineType.OBOE) Color(0xFF38BDF8) else Color.White.copy(alpha = 0.3f)
-                ),
-                modifier = Modifier
-                    .clip(RoundedCornerShape(8.dp))
-                    .clickable(onClick = onOpenSettings)
-                    .testTag("player_audio_engine_badge")
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                // Botón para cambiar de video (Galería o Gestor)
+                FilledTonalButton(
+                    onClick = onChangeSource,
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.testTag("player_change_source_button")
                 ) {
                     Icon(
-                        imageVector = Icons.Default.Audiotrack,
-                        contentDescription = "Motor de audio",
-                        tint = if (selectedAudioEngine == AudioEngineType.OBOE) Color(0xFF38BDF8) else Color.White,
-                        modifier = Modifier.size(15.dp)
+                        imageVector = Icons.Default.SwapHoriz,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
                     )
-                    Text(
-                        text = if (selectedAudioEngine == AudioEngineType.OBOE) "Oboe C++" else "Media3",
-                        style = MaterialTheme.typography.labelSmall.copy(
-                            fontWeight = FontWeight.Bold,
-                            color = if (selectedAudioEngine == AudioEngineType.OBOE) Color(0xFF38BDF8) else Color.White
-                        )
-                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Cambiar", style = MaterialTheme.typography.labelMedium)
                 }
-            }
 
-            // Botón para cambiar de video (Galería o Gestor)
-            FilledTonalButton(
-                onClick = onChangeSource,
-                shape = RoundedCornerShape(8.dp),
-                modifier = Modifier.testTag("player_change_source_button")
-            ) {
-                Icon(
-                    imageVector = Icons.Default.SwapHoriz,
-                    contentDescription = null,
-                    modifier = Modifier.size(18.dp)
-                )
-                Spacer(modifier = Modifier.width(6.dp))
-                Text("Cambiar", style = MaterialTheme.typography.labelMedium)
-            }
+                // Alternador de relación de aspecto
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = Color.White.copy(alpha = 0.15f),
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .clickable(onClick = onToggleAspectMode)
+                        .testTag("player_aspect_mode_button")
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.AspectRatio,
+                            contentDescription = "Modo de pantalla",
+                            tint = Color.White,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Text(
+                            text = aspectModeLabel,
+                            style = MaterialTheme.typography.labelSmall.copy(color = Color.White)
+                        )
+                    }
+                }
 
-            // Alternador de relación de aspecto
-            Surface(
-                shape = RoundedCornerShape(8.dp),
-                color = Color.White.copy(alpha = 0.15f),
-                modifier = Modifier
-                    .clip(RoundedCornerShape(8.dp))
-                    .clickable(onClick = onToggleAspectMode)
-                    .testTag("player_aspect_mode_button")
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                // Botón de acceso directo a Ajustes
+                IconButton(
+                    onClick = onOpenSettings,
+                    modifier = Modifier.testTag("player_settings_button")
                 ) {
                     Icon(
-                        imageVector = Icons.Default.AspectRatio,
-                        contentDescription = "Modo de pantalla",
-                        tint = Color.White,
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Text(
-                        text = aspectModeLabel,
-                        style = MaterialTheme.typography.labelSmall.copy(color = Color.White)
+                        imageVector = Icons.Default.Settings,
+                        contentDescription = "Ajustes del reproductor",
+                        tint = Color.White
                     )
                 }
-            }
-
-            // Botón de acceso directo a Ajustes
-            IconButton(
-                onClick = onOpenSettings,
-                modifier = Modifier.testTag("player_settings_button")
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Settings,
-                    contentDescription = "Ajustes del reproductor",
-                    tint = Color.White
-                )
             }
         }
     }
 }
-
 
 /**
  * Controles de reproducción centrales: Retroceso, Play/Pausa y Avance.
@@ -1011,6 +1199,7 @@ private fun BottomControlsBar(
                     colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.9f))
                 )
             )
+            .navigationBarsPadding()
             .padding(horizontal = 16.dp, vertical = 12.dp)
     ) {
         Column(

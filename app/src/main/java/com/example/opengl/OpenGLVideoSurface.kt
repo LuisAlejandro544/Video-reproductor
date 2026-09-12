@@ -106,9 +106,12 @@ class OpenGLVideoRenderer(
             GLES20.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES20.GL_TEXTURE_WRAP_S, GLES20.GL_CLAMP_TO_EDGE)
             GLES20.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES20.GL_TEXTURE_WRAP_T, GLES20.GL_CLAMP_TO_EDGE)
 
-            // Crear SurfaceTexture asociada a la textura GPU y envolver en un Surface de Android
+            // Crear SurfaceTexture asociada a la textura GPU y envolver en un Surface de Android.
+            // CRÍTICO: Debe pasarse 'mainHandler' porque GLThread no posee un Looper.
+            // Sin un Handler asociado a un Looper activo, Android descarta el callback OnFrameAvailable
+            // y la pantalla permanece completamente en negro durante la reproducción.
             val st = SurfaceTexture(textureId)
-            st.setOnFrameAvailableListener(this)
+            st.setOnFrameAvailableListener(this, mainHandler)
             surfaceTexture = st
 
             val surface = Surface(st)
@@ -119,6 +122,7 @@ class OpenGLVideoRenderer(
             mainHandler.post {
                 try {
                     onSurfaceCreatedCallback(surface)
+                    glSurfaceView?.requestRender()
                 } catch (e: Throwable) {
                     Log.e(TAG, "Error en onSurfaceCreatedCallback en el hilo principal: ${e.message}", e)
                 }

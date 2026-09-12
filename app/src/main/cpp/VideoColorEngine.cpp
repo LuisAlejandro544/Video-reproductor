@@ -91,7 +91,8 @@ R"glsl(
             color.rgb = pow(color.rgb, vec3(1.0 / max(uGamma, 0.01)));
         }
 
-        gl_FragColor = color;
+        // Asegurar opacidad total para evitar que frames con alfa nulo decodificados por hardware se vean negros
+        gl_FragColor = vec4(color.rgb, 1.0);
     }
 )glsl";
 

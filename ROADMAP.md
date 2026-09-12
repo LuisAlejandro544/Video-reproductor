@@ -66,8 +66,15 @@ Este documento detalla las fases de desarrollo planificadas para convertir a **N
 
 ---
 
-### ⏳ Fase 5: Optimizaciones para Android Go y Dispositivos de 32 Bits
-- [ ] Perfiles automáticos de uso de memoria RAM (límite estricto de búferes en dispositivos de 1GB/2GB).
+### ⏳ Fase 5: Renderizado Gráfico Adaptativo Vulkan 1.1+ y Optimizaciones
+- [ ] **Detección Dinámica de Capacidades de Hardware:** Consulta en tiempo de ejecución de `FEATURE_VULKAN_HARDWARE_VERSION` para detectar soporte de Vulkan 1.1+ (`0x401000`).
+- [ ] **Arquitectura con Degradación Elegante (*Graceful Fallback*):**
+  - Dispositivos con Vulkan 1.1+: Canal de renderizado nativo C++ con extensión `VK_ANDROID_external_memory_android_hardware_buffer` para menor sobrecarga de CPU y consumo de batería.
+  - Dispositivos sin soporte o con versiones previas (Vulkan 1.0): Renderizado automático y transparente con el pipeline probado de OpenGL ES 2.0 / 3.0.
+- [ ] **Selector Inteligente en Pantalla de Configuración (`SettingsScreen`):**
+  - Opción interactiva para elegir entre motor Vulkan y OpenGL ES cuando el hardware lo soporte.
+  - Bloqueo visual con mensaje informativo si el procesador no cuenta con Vulkan 1.1+.
+- [ ] Perfiles automáticos de uso de memoria RAM (límite estricto de búferes en dispositivos de 1GB/2GB y Android Go).
 - [ ] Estrategia de reducción de resolución de texturas intermedias si la GPU reporta sobrecarga.
 - [ ] Desactivación selectiva de shaders pesados en dispositivos con procesadores ARMv7 de 32 bits.
 
