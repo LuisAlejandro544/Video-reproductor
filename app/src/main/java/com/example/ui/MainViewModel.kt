@@ -1,6 +1,7 @@
 package com.example.ui
 
 import android.app.Application
+import android.content.Context
 import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -8,10 +9,13 @@ import com.example.data.AppDatabase
 import com.example.data.VideoEntity
 import com.example.data.VideoRepository
 import com.example.model.VideoItem
+import com.example.utils.VideoUtils
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * MainViewModel - Administrador de estado central para la biblioteca de videos y reproducción.
@@ -39,8 +43,31 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /**
-     * Registra un video importado desde el selector (Galería o Gestor de Archivos)
-     * y obtiene su última posición guardada (si ya había sido visto antes).
+     * Importa un nuevo video de forma segura asegurando persistencia de lectura eterna:
+     * Si la URI proviene de Photo Picker o no soporta permisos persistentes, se almacena
+     * una copia protegida en almacenamiento local privado antes de registrar en Room.
+     */
+    fun importVideo(
+        context: Context,
+        rawUri: Uri,
+        onReady: (VideoItem, Long) -> Unit
+    ) {
+        viewModelScope.launch {
+            val persistentUri = withContext(Dispatchers.IO) {
+                VideoUtils.persistUriOrCopy(context, rawUri)
+            }
+            val videoItem = VideoUtils.resolveVideoMetadata(context, persistentUri)
+            val entity = repository.recordImportedVideo(getApplication(), videoItem)
+            val updatedItem = videoItem.copy(
+                durationMs = entity.durationMs,
+                formattedDuration = entity.formattedDuration
+            )
+            onReady(updatedItem, entity.lastPositionMs)
+        }
+    }
+
+    /**
+     * Registra un video ya resuelto y obtiene su última posición guardada.
      */
     fun onVideoSelected(videoItem: VideoItem, onReady: (VideoItem, Long) -> Unit) {
         viewModelScope.launch {
@@ -55,9 +82,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     /**
      * Permite reanudar o reproducir directamente un video existente en la lista de importados.
+     * Si el video era una URI temporal antigua cuyo permiso expiró antes de la actualización,
+     * notifica a través de onError para que el usuario pueda volver a seleccionarlo.
      */
-    fun playFromHistory(entity: VideoEntity, onPlay: (VideoItem, Long) -> Unit) {
+    fun playFromHistory(
+        entity: VideoEntity,
+        onError: ((String) -> Unit)? = null,
+        onPlay: (VideoItem, Long) -> Unit
+    ) {
         val uri = Uri.parse(entity.uriString)
+        val isAccessible = VideoUtils.isUriAccessible(getApplication(), uri)
+
+        if (!isAccessible) {
+            onError?.invoke("El permiso temporal de este archivo expiró en el sistema. Por favor reimpórtalo desde la Galería.")
+            return
+        }
+
         val videoItem = VideoItem(
             uri = uri,
             name = entity.name,
@@ -83,20 +123,29 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /**
-     * Elimina un archivo del historial e importados.
+     * Elimina un archivo del historial e importados, eliminando también la copia física local si existía.
      */
-    fun deleteVideo(id: Long) {
+    fun deleteVideo(id: Long, uriString: String? = null) {
         viewModelScope.launch {
+            uriString?.let { uri ->
+                withContext(Dispatchers.IO) {
+                    VideoUtils.deleteImportedFileIfLocal(getApplication(), uri)
+                }
+            }
             repository.deleteVideo(id)
         }
     }
 
     /**
-     * Vacía el historial de videos.
+     * Vacía el historial de videos y limpia la carpeta interna de archivos importados.
      */
     fun clearAllVideos() {
         viewModelScope.launch {
+            withContext(Dispatchers.IO) {
+                VideoUtils.clearImportedFiles(getApplication())
+            }
             repository.clearHistory()
         }
     }
 }
+

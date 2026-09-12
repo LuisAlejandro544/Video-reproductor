@@ -43,7 +43,8 @@ class OpenGLVideoRenderer(
 
     private var textureId: Int = 0
     private var surfaceTexture: SurfaceTexture? = null
-    private var videoSurface: Surface? = null
+    var videoSurface: Surface? = null
+        private set
     private var glSurfaceView: GLSurfaceView? = null
 
     // Matrices de transformación
@@ -88,7 +89,12 @@ class OpenGLVideoRenderer(
             Log.i(TAG, "onSurfaceCreated: Inicializando pipeline OpenGL ES nativo...")
             GLES20.glClearColor(0.0f, 0.0f, 0.0f, 1.0f)
 
-            // Inicializar motor de shaders nativo en C++
+            // Liberar estado previo y forzar compilación limpia de shaders para el nuevo EGLContext
+            try {
+                NativeVideoFilter.nativeRelease()
+            } catch (_: Throwable) {}
+
+            // Inicializar motor de shaders nativo en C++ para el contexto actual
             try {
                 NativeVideoFilter.nativeInit()
             } catch (e: Throwable) {
@@ -306,7 +312,7 @@ fun OpenGLVideoPlayerView(
 ) {
     val mainHandler = remember { Handler(Looper.getMainLooper()) }
 
-    val renderer = remember {
+    val renderer = remember(player) {
         OpenGLVideoRenderer { surface ->
             mainHandler.post {
                 try {
@@ -369,6 +375,8 @@ fun OpenGLVideoPlayerView(
         factory = { ctx ->
             GLSurfaceView(ctx).apply {
                 setEGLContextClientVersion(2)
+                // Evita que capas opacas de Compose tapen la superficie de renderizado de video
+                setZOrderMediaOverlay(true)
                 setRenderer(renderer)
                 renderMode = GLSurfaceView.RENDERMODE_WHEN_DIRTY
                 renderer.attachView(this)
@@ -379,6 +387,18 @@ fun OpenGLVideoPlayerView(
             renderer.updateEqualizer(equalizerState)
             renderer.updateAspectRatioMode(aspectRatioMode)
             renderer.updateVideoDimensions(videoWidth, videoHeight)
+
+            // Garantizar que la superficie activa esté enlazada a la instancia actual de ExoPlayer
+            renderer.videoSurface?.let { surf ->
+                if (surf.isValid) {
+                    try {
+                        player.setVideoSurface(surf)
+                    } catch (e: Throwable) {
+                        Log.w("OpenGLVideoPlayerView", "Error reasignando superficie a ExoPlayer en update: ${e.message}")
+                    }
+                }
+            }
+
             try {
                 view.requestRender()
             } catch (e: Throwable) {

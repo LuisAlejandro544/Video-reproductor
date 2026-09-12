@@ -109,8 +109,7 @@ fun MainVideoApp(
         contract = ActivityResultContracts.PickVisualMedia()
     ) { uri ->
         if (uri != null) {
-            val videoItem = VideoUtils.resolveVideoMetadata(context, uri)
-            viewModel.onVideoSelected(videoItem) { updatedItem, lastPos ->
+            viewModel.importVideo(context, uri) { updatedItem, lastPos ->
                 currentVideo = updatedItem
                 currentPlaybackPositionMs = lastPos
                 currentScreen = AppScreen.PLAYER
@@ -123,17 +122,7 @@ fun MainVideoApp(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri ->
         if (uri != null) {
-            try {
-                // Solicitar permisos de lectura persistente para la Uri del archivo
-                context.contentResolver.takePersistableUriPermission(
-                    uri,
-                    Intent.FLAG_GRANT_READ_URI_PERMISSION
-                )
-            } catch (_: Exception) {
-                // En caso de que el proveedor no soporte persistencia directa
-            }
-            val videoItem = VideoUtils.resolveVideoMetadata(context, uri)
-            viewModel.onVideoSelected(videoItem) { updatedItem, lastPos ->
+            viewModel.importVideo(context, uri) { updatedItem, lastPos ->
                 currentVideo = updatedItem
                 currentPlaybackPositionMs = lastPos
                 currentScreen = AppScreen.PLAYER
@@ -216,14 +205,22 @@ fun MainVideoApp(
                     onOpenGallery = openGallery,
                     onOpenFileManager = openFileManager,
                     onPlayVideo = { entity ->
-                        viewModel.playFromHistory(entity) { item, lastPos ->
-                            currentVideo = item
-                            currentPlaybackPositionMs = lastPos
-                            currentScreen = AppScreen.PLAYER
-                        }
+                        viewModel.playFromHistory(
+                            entity = entity,
+                            onError = { errorMsg ->
+                                android.widget.Toast.makeText(context, errorMsg, android.widget.Toast.LENGTH_LONG).show()
+                                showSourceDialog = true
+                            },
+                            onPlay = { item, lastPos ->
+                                currentVideo = item
+                                currentPlaybackPositionMs = lastPos
+                                currentScreen = AppScreen.PLAYER
+                            }
+                        )
                     },
                     onDeleteVideo = { videoId ->
-                        viewModel.deleteVideo(videoId)
+                        val targetEntity = importedVideos.find { it.id == videoId }
+                        viewModel.deleteVideo(videoId, targetEntity?.uriString)
                     },
                     onClearHistory = {
                         viewModel.clearAllVideos()

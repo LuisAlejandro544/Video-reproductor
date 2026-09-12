@@ -277,9 +277,29 @@ GLuint VideoColorEngine::createProgram(const char* vertexSource, const char* fra
 
 bool VideoColorEngine::init() {
     std::lock_guard<std::mutex> lock(mEngineMutex);
-    if (mProgram != 0) {
+    // Validar si el programa actual sigue existiendo en el contexto EGL activo
+    if (mProgram != 0 && glIsProgram(mProgram)) {
         return true;
     }
+
+    // Si el programa no es válido en el contexto actual (o es 0), resetear handles
+    mProgram = 0;
+    maPositionHandle     = -1;
+    maTextureCoordHandle = -1;
+    muMVPMatrixHandle    = -1;
+    muSTMatrixHandle     = -1;
+    msTextureHandle      = -1;
+    muBrightnessHandle   = -1;
+    muContrastHandle     = -1;
+    muSaturationHandle   = -1;
+    muGammaHandle        = -1;
+    muSharpnessHandle    = -1;
+    muTexelStepHandle    = -1;
+    muBlueLightFilterHandle = -1;
+    muBlurRadiusHandle   = -1;
+    muBackgroundDimHandle= -1;
+    muFsrEnabledHandle   = -1;
+    muFsrSharpnessHandle = -1;
 
     mProgram = createProgram(sVertexShaderSource, sFragmentShaderSource);
     if (mProgram == 0) {
@@ -394,8 +414,15 @@ bool VideoColorEngine::render(
 void VideoColorEngine::release() {
     std::lock_guard<std::mutex> lock(mEngineMutex);
     if (mProgram != 0) {
-        glDeleteProgram(mProgram);
+        if (glIsProgram(mProgram)) {
+            glDeleteProgram(mProgram);
+        }
         mProgram = 0;
-        LOGI("VideoColorEngine liberado.");
+        maPositionHandle     = -1;
+        maTextureCoordHandle = -1;
+        muMVPMatrixHandle    = -1;
+        muSTMatrixHandle     = -1;
+        msTextureHandle      = -1;
+        LOGI("VideoColorEngine liberado correctamente.");
     }
 }

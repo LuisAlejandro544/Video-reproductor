@@ -418,7 +418,15 @@ fun VideoPlayerScreen(
                 Log.e("VideoPlayerScreen", "Error de reproducción ExoPlayer: ${error.message}", error)
                 isBuffering = false
                 isPlaying = false
-                playbackErrorMessage = error.localizedMessage ?: "No se pudo reproducir el video."
+                val rawMsg = error.localizedMessage ?: ""
+                playbackErrorMessage = if (rawMsg.contains("Source error", ignoreCase = true) ||
+                    error.errorCodeName.contains("SOURCE", ignoreCase = true) ||
+                    rawMsg.contains("Permission", ignoreCase = true)
+                ) {
+                    "El permiso temporal del sistema sobre este video ha expirado. Selecciona el archivo nuevamente desde la Galería para guardarlo permanentemente."
+                } else {
+                    rawMsg.ifBlank { "No se pudo reproducir el video." }
+                }
             }
 
             override fun onCues(cueGroup: CueGroup) {
@@ -954,6 +962,11 @@ fun VideoPlayerScreen(
                                 onClick = onBackToHome
                             ) {
                                 Text("Volver")
+                            }
+                            Button(
+                                onClick = onChangeVideoSource
+                            ) {
+                                Text("Cambiar video")
                             }
                             Button(
                                 onClick = {
