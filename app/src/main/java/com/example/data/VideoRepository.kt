@@ -79,6 +79,13 @@ class VideoRepository(private val videoDao: VideoDao) {
     }
 
     /**
+     * Modifica el nombre personalizado de un video importado por su ID.
+     */
+    suspend fun renameVideo(id: Long, newName: String) = withContext(Dispatchers.IO) {
+        videoDao.updateName(id, newName)
+    }
+
+    /**
      * Limpia por completo la biblioteca de videos importados.
      */
     suspend fun clearHistory() = withContext(Dispatchers.IO) {

@@ -234,6 +234,9 @@ fun MainVideoApp(
                         val targetEntity = importedVideos.find { it.id == videoId }
                         viewModel.deleteVideo(videoId, targetEntity?.uriString)
                     },
+                    onRenameVideo = { videoId, newName ->
+                        viewModel.renameVideo(videoId, newName)
+                    },
                     onClearHistory = {
                         viewModel.clearAllVideos()
                     },

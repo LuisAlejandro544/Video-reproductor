@@ -134,7 +134,7 @@ fun SubtitlesBottomSheet(
                             )
                         )
                         Text(
-                            text = "Soporte nativo SRT (SubRip) y VTT (WebVTT)",
+                            text = "Soporte nativo SRT, WebVTT y SSA/ASS (Rust Core)",
                             style = MaterialTheme.typography.bodySmall.copy(
                                 color = Color.White.copy(alpha = 0.7f),
                                 fontSize = 12.sp
@@ -327,13 +327,30 @@ fun SubtitlesBottomSheet(
                                     ),
                                     maxLines = 1
                                 )
+                                val formatText = when {
+                                    externalSubtitle.mimeType.contains("ssa") || externalSubtitle.label.endsWith(".ass", true) || externalSubtitle.label.endsWith(".ssa", true) -> {
+                                        "Formato SSA/ASS (Rust Core)"
+                                    }
+                                    externalSubtitle.mimeType.contains("vtt") -> "Formato WebVTT (.vtt)"
+                                    else -> "Formato SubRip (.srt)"
+                                }
                                 Text(
-                                    text = if (externalSubtitle.mimeType.contains("vtt")) "Formato WebVTT (.vtt)" else "Formato SubRip (.srt)",
+                                    text = formatText,
                                     style = MaterialTheme.typography.labelSmall.copy(
                                         color = Color(0xFF38BDF8),
                                         fontSize = 11.sp
                                     )
                                 )
+                                if (externalSubtitle.assInfo != null) {
+                                    val info = externalSubtitle.assInfo
+                                    Text(
+                                        text = "Rust: ${info.dialogueCount} diálogos • ${info.styleCount} estilos${if (info.playResX > 0) " • ${info.playResX}x${info.playResY}" else ""}",
+                                        style = MaterialTheme.typography.labelSmall.copy(
+                                            color = Color(0xFF34D399),
+                                            fontSize = 10.sp
+                                        )
+                                    )
+                                }
                             }
                         }
 
@@ -366,7 +383,7 @@ fun SubtitlesBottomSheet(
 
             Spacer(modifier = Modifier.height(6.dp))
 
-            // Botón para seleccionar o cambiar archivo .srt / .vtt
+            // Botón para seleccionar o cambiar archivo .srt / .vtt / .ass / .ssa
             Button(
                 onClick = {
                     // Permitir selección de tipos de subtítulos y archivos de texto
@@ -374,6 +391,7 @@ fun SubtitlesBottomSheet(
                         arrayOf(
                             "application/x-subrip",
                             "text/vtt",
+                            "text/x-ssa",
                             "text/plain",
                             "*/*"
                         )
@@ -396,7 +414,7 @@ fun SubtitlesBottomSheet(
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = if (externalSubtitle != null) "Cargar otro archivo (.srt / .vtt)" else "Cargar archivo de subtítulos (.srt / .vtt)",
+                    text = if (externalSubtitle != null) "Cargar otro archivo (.srt / .vtt / .ass)" else "Cargar archivo de subtítulos (.srt / .vtt / .ass)",
                     style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Medium)
                 )
             }

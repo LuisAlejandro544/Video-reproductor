@@ -7,6 +7,10 @@ import androidx.annotation.OptIn
 import androidx.media3.common.C
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.util.UnstableApi
+import com.example.rust.AssScriptInfo
+import com.example.rust.NovaRustCore
+import java.io.BufferedReader
+import java.io.InputStreamReader
 
 /**
  * Representa una pista de subtítulos disponible para la reproducción (interna o externa).
@@ -14,11 +18,12 @@ import androidx.media3.common.util.UnstableApi
  * @param id Identificador único de la pista o clave representativa.
  * @param label Nombre amigable para mostrar en la interfaz (ej: "Español (SRT)", "Pista 1: Inglés").
  * @param language Código ISO o etiqueta de idioma si está disponible.
- * @param mimeType Tipo MIME asociado (application/x-subrip o text/vtt).
- * @param isExternal Indica si fue cargada manualmente por el usuario desde un archivo .srt o .vtt.
+ * @param mimeType Tipo MIME asociado (application/x-subrip, text/vtt o text/x-ssa).
+ * @param isExternal Indica si fue cargada manualmente por el usuario desde un archivo .srt, .vtt, .ass o .ssa.
  * @param uri URI del archivo en caso de ser subtítulo externo.
  * @param trackGroupIndex Índice del grupo de pistas en ExoPlayer (para pistas internas).
  * @param trackIndex Índice de la pista dentro del grupo (para pistas internas).
+ * @param assInfo Metadatos de subtítulos SSA/ASS analizados mediante el motor nativo en Rust.
  */
 data class SubtitleTrackItem(
     val id: String,
@@ -28,7 +33,8 @@ data class SubtitleTrackItem(
     val isExternal: Boolean = false,
     val uri: Uri? = null,
     val trackGroupIndex: Int = -1,
-    val trackIndex: Int = -1
+    val trackIndex: Int = -1,
+    val assInfo: AssScriptInfo? = null
 )
 
 /**
@@ -44,7 +50,7 @@ enum class SubtitleSize(val label: String, val fraction: Float) {
 }
 
 /**
- * Utilidades para detección y manejo de archivos de subtítulos SRT y WebVTT.
+ * Utilidades para detección y manejo de archivos de subtítulos SRT, WebVTT y SSA/ASS.
  */
 @OptIn(UnstableApi::class)
 object SubtitleUtils {
@@ -70,14 +76,43 @@ object SubtitleUtils {
     }
 
     /**
-     * Determina el tipo MIME adecuado según la extensión (.srt o .vtt) o el tipo devuelto por el sistema.
+     * Determina el tipo MIME adecuado según la extensión (.srt, .vtt, .ass, .ssa) o el tipo devuelto por el sistema.
      */
     fun detectSubtitleMimeType(fileName: String, resolvedMime: String? = null): String {
         val lowerName = fileName.lowercase()
         return when {
-            lowerName.endsWith(".vtt") || resolvedMime == "text/vtt" -> MimeTypes.TEXT_VTT
-            lowerName.endsWith(".srt") || resolvedMime == "application/x-subrip" -> MimeTypes.APPLICATION_SUBRIP
+            lowerName.endsWith(".ass") || lowerName.endsWith(".ssa") || resolvedMime == MimeTypes.TEXT_SSA -> MimeTypes.TEXT_SSA
+            lowerName.endsWith(".vtt") || resolvedMime == MimeTypes.TEXT_VTT -> MimeTypes.TEXT_VTT
+            lowerName.endsWith(".srt") || resolvedMime == MimeTypes.APPLICATION_SUBRIP -> MimeTypes.APPLICATION_SUBRIP
             else -> MimeTypes.APPLICATION_SUBRIP // Fallback seguro a SubRip (.srt)
         }
     }
+
+    /**
+     * Si el archivo es SSA/ASS, lee su cabecera e invoca al motor nativo de Rust para extraer metadatos.
+     */
+    fun inspectAssMetadataIfApplicable(context: Context, uri: Uri, fileName: String): AssScriptInfo? {
+        val lower = fileName.lowercase()
+        if (!lower.endsWith(".ass") && !lower.endsWith(".ssa")) {
+            return null
+        }
+        return try {
+            context.contentResolver.openInputStream(uri)?.use { stream ->
+                val reader = BufferedReader(InputStreamReader(stream))
+                val sb = StringBuilder()
+                // Leer hasta 300 líneas para extraer Script Info y estilos con ultra-bajo impacto de memoria
+                var line: String? = reader.readLine()
+                var count = 0
+                while (line != null && count < 300) {
+                    sb.appendLine(line)
+                    line = reader.readLine()
+                    count++
+                }
+                NovaRustCore.parseAssSubtitles(sb.toString())
+            }
+        } catch (e: Exception) {
+            null
+        }
+    }
 }
+

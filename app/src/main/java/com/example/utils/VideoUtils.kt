@@ -2,11 +2,16 @@ package com.example.utils
 
 import android.content.Context
 import android.content.Intent
-import android.net.Uri
+import android.graphics.Bitmap
 import android.media.MediaMetadataRetriever
+import android.net.Uri
+import android.os.Build
 import android.provider.OpenableColumns
 import android.util.Log
+import androidx.collection.LruCache
 import com.example.model.VideoItem
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
 import java.util.Locale
@@ -258,6 +263,66 @@ object VideoUtils {
             mb >= 1.0 -> String.format(Locale.getDefault(), "%.1f MB", mb)
             kb >= 1.0 -> String.format(Locale.getDefault(), "%.1f KB", kb)
             else -> "$bytes B"
+        }
+    }
+
+    /**
+     * Caché LRU en memoria para miniaturas de video generadas, evitando recalcular fotogramas en scroll.
+     */
+    private val thumbnailCache = LruCache<String, Bitmap>(35)
+
+    /**
+     * Carga de forma asíncrona un fotograma (Bitmap) exactamente en la posición donde se dejó el video (positionMs).
+     *
+     * - Si positionMs > 0, extrae el frame exacto de pausa.
+     * - Si positionMs == 0, extrae el primer frame representativo.
+     * - Se ejecuta en Dispatchers.IO para no bloquear la interfaz y escala la imagen eficientemente.
+     */
+    suspend fun loadThumbnailAtPosition(
+        context: Context,
+        uri: Uri,
+        positionMs: Long
+    ): Bitmap? = withContext(Dispatchers.IO) {
+        val cacheKey = "${uri}_$positionMs"
+        thumbnailCache.get(cacheKey)?.let { return@withContext it }
+
+        var retriever: MediaMetadataRetriever? = null
+        try {
+            retriever = MediaMetadataRetriever()
+            if (uri.scheme.equals("file", ignoreCase = true)) {
+                val path = uri.path ?: return@withContext null
+                retriever.setDataSource(path)
+            } else {
+                retriever.setDataSource(context, uri)
+            }
+
+            // MediaMetadataRetriever espera el tiempo en microsegundos (us = ms * 1000)
+            val targetTimeUs = (positionMs.coerceAtLeast(0L)) * 1000L
+
+            val frame: Bitmap? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+                // En API 27+ getScaledFrameAtTime genera el bitmap directamente en el tamaño requerido con mínimo consumo
+                retriever.getScaledFrameAtTime(
+                    targetTimeUs,
+                    MediaMetadataRetriever.OPTION_CLOSEST_SYNC,
+                    280,
+                    160
+                ) ?: retriever.getFrameAtTime(targetTimeUs, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+            } else {
+                // Fallback para API 26 (Android 8.0)
+                retriever.getFrameAtTime(targetTimeUs, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+            }
+
+            if (frame != null) {
+                thumbnailCache.put(cacheKey, frame)
+            }
+            frame
+        } catch (e: Exception) {
+            Log.w(TAG, "Error extrayendo miniatura en $positionMs ms para $uri: ${e.message}")
+            null
+        } finally {
+            try {
+                retriever?.release()
+            } catch (_: Exception) {}
         }
     }
 }

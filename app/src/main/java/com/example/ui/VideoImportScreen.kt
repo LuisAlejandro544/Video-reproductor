@@ -1,16 +1,8 @@
 package com.example.ui
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -18,36 +10,15 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Audiotrack
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.History
-import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.PhotoLibrary
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.PlayCircleFilled
-import androidx.compose.material.icons.filled.Schedule
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Speed
-import androidx.compose.material.icons.filled.VideoLibrary
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.SuggestionChip
-import androidx.compose.material3.SuggestionChipDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -58,34 +29,33 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.example.audio.AudioEngineType
 import com.example.data.VideoEntity
-import com.example.utils.VideoUtils
+import com.example.ui.library.ArchitectureInfoCard
+import com.example.ui.library.AudioEngineBanner
+import com.example.ui.library.BrandHeroSection
+import com.example.ui.library.ClearHistoryConfirmDialog
+import com.example.ui.library.DeleteVideoConfirmDialog
+import com.example.ui.library.EmptyImportedVideosCard
+import com.example.ui.library.ImportQuickCard
+import com.example.ui.library.RenameVideoDialog
+import com.example.ui.library.SupportedFormatsSection
+import com.example.ui.library.TopHeaderSection
+import com.example.ui.library.VideoHistoryCard
 
 /**
- * Pantalla principal interactiva de Nova Video Player.
+ * VideoImportScreen.kt - Pantalla Principal y Biblioteca de Videos
  *
- * Ofrece:
- * 1. Acceso directo a la importación de videos (Galería y Gestor de Archivos de Android).
- * 2. Visualización enriquecida de los archivos importados y reproducidos previamente con:
- *    - Título completo del archivo de video.
- *    - Duración formateada (ej. 04:32 o 01:20:15).
- *    - Tamaño del archivo.
- *    - Barra de progreso de visualización y estado (Visto completo, En pausa o Sin empezar).
- *    - Reproducción inmediata con un solo toque desde la posición guardada.
- * 3. Acceso al selector y telemetría del motor de audio (Oboe C++ vs Media3 AudioTrack).
+ * Arquitectura modular que integra:
+ * - ImportQuickCard: Selección rápida de videos desde galería o gestor de archivos.
+ * - VideoHistoryCard / EmptyImportedVideosCard: Gestión visual de videos importados y su progreso con miniatura real.
+ * - LibraryDialogs: Diálogos modales para borrado individual, vaciado de historial o edición de nombre.
+ * - LibraryHeaders y LibraryFooterCards: Identidad visual, estado del motor y soporte de formatos.
  */
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun VideoImportScreen(
     importedVideos: List<VideoEntity>,
@@ -94,139 +64,47 @@ fun VideoImportScreen(
     onOpenGallery: () -> Unit,
     onOpenFileManager: () -> Unit,
     onPlayVideo: (VideoEntity) -> Unit,
+    onRenameVideo: (Long, String) -> Unit = { _, _ -> },
     onDeleteVideo: (Long) -> Unit,
     onClearHistory: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     var showClearConfirmDialog by remember { mutableStateOf(false) }
     var videoPendingDelete by remember { mutableStateOf<VideoEntity?>(null) }
+    var videoPendingRename by remember { mutableStateOf<VideoEntity?>(null) }
 
-    // Diálogo modal de confirmación antes de eliminar un video individual de la biblioteca
-    videoPendingDelete?.let { video ->
-        AlertDialog(
-            onDismissRequest = { videoPendingDelete = null },
-            icon = {
-                Surface(
-                    shape = CircleShape,
-                    color = MaterialTheme.colorScheme.error.copy(alpha = 0.18f),
-                    modifier = Modifier.size(48.dp)
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(
-                            imageVector = Icons.Default.DeleteOutline,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.error,
-                            modifier = Modifier.size(24.dp)
-                        )
-                    }
-                }
+    // Diálogo modal para renombrar video usando motor Rust
+    videoPendingRename?.let { video ->
+        RenameVideoDialog(
+            video = video,
+            onConfirm = { newName ->
+                onRenameVideo(video.id, newName)
+                videoPendingRename = null
             },
-            title = {
-                Text(
-                    text = "¿Eliminar video?",
-                    style = MaterialTheme.typography.titleLarge.copy(
-                        fontWeight = FontWeight.Bold
-                    ),
-                    color = Color.White
-                )
-            },
-            text = {
-                Column(
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text(
-                        text = "¿Deseas eliminar este video del registro de la biblioteca?",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = Color.White.copy(alpha = 0.85f)
-                    )
-                    Surface(
-                        shape = RoundedCornerShape(8.dp),
-                        color = Color.White.copy(alpha = 0.07f),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text(
-                            text = video.name,
-                            style = MaterialTheme.typography.bodySmall.copy(
-                                fontWeight = FontWeight.SemiBold
-                            ),
-                            color = Color(0xFF38BDF8),
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.padding(10.dp)
-                        )
-                    }
-                    Text(
-                        text = "El archivo original no se borrará del almacenamiento de tu teléfono.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = Color.White.copy(alpha = 0.55f)
-                    )
-                }
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        val idToDelete = video.id
-                        videoPendingDelete = null
-                        onDeleteVideo(idToDelete)
-                    },
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.error
-                    ),
-                    shape = RoundedCornerShape(8.dp),
-                    modifier = Modifier.testTag("confirm_delete_video_button")
-                ) {
-                    Text("Eliminar", color = Color.White, fontWeight = FontWeight.Bold)
-                }
-            },
-            dismissButton = {
-                TextButton(
-                    onClick = { videoPendingDelete = null },
-                    modifier = Modifier.testTag("cancel_delete_video_button")
-                ) {
-                    Text("Cancelar", color = Color.White.copy(alpha = 0.7f))
-                }
-            },
-            containerColor = Color(0xFF1B2230),
-            tonalElevation = 8.dp,
-            modifier = Modifier.testTag("delete_video_confirmation_dialog")
+            onDismiss = { videoPendingRename = null }
         )
     }
 
-    // Diálogo de confirmación para vaciar el historial
+    // Diálogo modal de confirmación antes de eliminar un video individual de la biblioteca
+    videoPendingDelete?.let { video ->
+        DeleteVideoConfirmDialog(
+            video = video,
+            onConfirm = {
+                onDeleteVideo(video.id)
+                videoPendingDelete = null
+            },
+            onDismiss = { videoPendingDelete = null }
+        )
+    }
+
+    // Diálogo de confirmación para vaciar todo el historial
     if (showClearConfirmDialog) {
-        AlertDialog(
-            onDismissRequest = { showClearConfirmDialog = false },
-            title = {
-                Text(
-                    text = "Vaciar biblioteca de videos",
-                    style = MaterialTheme.typography.titleLarge
-                )
+        ClearHistoryConfirmDialog(
+            onConfirm = {
+                showClearConfirmDialog = false
+                onClearHistory()
             },
-            text = {
-                Text(
-                    text = "¿Deseas eliminar todos los videos del registro de importados y vistos? Tus archivos originales no se borrarán del dispositivo.",
-                    style = MaterialTheme.typography.bodyMedium
-                )
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        showClearConfirmDialog = false
-                        onClearHistory()
-                    },
-                    modifier = Modifier.testTag("confirm_clear_history_button")
-                ) {
-                    Text("Vaciar", color = MaterialTheme.colorScheme.error)
-                }
-            },
-            dismissButton = {
-                TextButton(
-                    onClick = { showClearConfirmDialog = false }
-                ) {
-                    Text("Cancelar")
-                }
-            }
+            onDismiss = { showClearConfirmDialog = false }
         )
     }
 
@@ -359,6 +237,7 @@ fun VideoImportScreen(
                 VideoHistoryCard(
                     video = video,
                     onPlay = { onPlayVideo(video) },
+                    onRename = { videoPendingRename = video },
                     onDelete = { videoPendingDelete = video }
                 )
             }
@@ -373,632 +252,6 @@ fun VideoImportScreen(
         item {
             ArchitectureInfoCard()
             Spacer(modifier = Modifier.height(24.dp))
-        }
-    }
-}
-
-/**
- * Barra superior con el nombre de la app y acceso directo a Configuración.
- */
-@Composable
-private fun TopHeaderSection(
-    selectedAudioEngine: AudioEngineType,
-    onOpenAudioSettings: () -> Unit
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(36.dp)
-                    .clip(CircleShape)
-                    .background(
-                        Brush.radialGradient(
-                            listOf(Color(0xFF0284C7), Color(0xFF0F172A))
-                        )
-                    ),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Default.PlayCircleFilled,
-                    contentDescription = null,
-                    tint = Color(0xFF38BDF8),
-                    modifier = Modifier.size(22.dp)
-                )
-            }
-            Text(
-                text = "Nova Player",
-                style = MaterialTheme.typography.titleLarge.copy(
-                    fontWeight = FontWeight.ExtraBold,
-                    letterSpacing = 0.5.sp
-                ),
-                color = MaterialTheme.colorScheme.onBackground
-            )
-        }
-
-        IconButton(
-            onClick = onOpenAudioSettings,
-            modifier = Modifier
-                .size(42.dp)
-                .background(Color(0xFF0F172A), CircleShape)
-                .border(1.dp, Color.White.copy(alpha = 0.15f), CircleShape)
-                .testTag("home_settings_top_button")
-        ) {
-            Icon(
-                imageVector = Icons.Default.Settings,
-                contentDescription = "Configuración",
-                tint = Color(0xFF38BDF8),
-                modifier = Modifier.size(20.dp)
-            )
-        }
-    }
-}
-
-/**
- * Hero de presentación con estética moderna.
- */
-@Composable
-private fun BrandHeroSection() {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 4.dp),
-        horizontalAlignment = Alignment.Start,
-        verticalArrangement = Arrangement.spacedBy(4.dp)
-    ) {
-        Text(
-            text = "Tu centro multimedia de alta fidelidad",
-            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-            color = MaterialTheme.colorScheme.onBackground
-        )
-        Text(
-            text = "Audio de latencia ultrabaja en C++ con Google Oboe y reproducción fluida en cualquier formato.",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f)
-        )
-    }
-}
-
-/**
- * Banner de motor de audio activo con acceso directo a la configuración.
- */
-@Composable
-private fun AudioEngineBanner(
-    selectedAudioEngine: AudioEngineType,
-    onOpenAudioSettings: () -> Unit
-) {
-    Card(
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF0F172A)),
-        modifier = Modifier
-            .fillMaxWidth()
-            .border(
-                width = 1.dp,
-                color = if (selectedAudioEngine == AudioEngineType.OBOE) Color(0xFF38BDF8).copy(alpha = 0.5f) else Color.White.copy(alpha = 0.2f),
-                shape = RoundedCornerShape(16.dp)
-            )
-            .clickable { onOpenAudioSettings() }
-            .testTag("home_audio_settings_banner")
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(14.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(40.dp)
-                    .clip(CircleShape)
-                    .background(
-                        if (selectedAudioEngine == AudioEngineType.OBOE) Color(0xFF0284C7).copy(alpha = 0.35f)
-                        else Color.White.copy(alpha = 0.1f)
-                    ),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Audiotrack,
-                    contentDescription = null,
-                    tint = if (selectedAudioEngine == AudioEngineType.OBOE) Color(0xFF38BDF8) else Color.White,
-                    modifier = Modifier.size(20.dp)
-                )
-            }
-
-            Column(modifier = Modifier.weight(1f)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = "Motor Activo:",
-                        style = MaterialTheme.typography.labelSmall.copy(color = Color.White.copy(alpha = 0.65f))
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Surface(
-                        shape = RoundedCornerShape(4.dp),
-                        color = if (selectedAudioEngine == AudioEngineType.OBOE) Color(0xFF10B981).copy(alpha = 0.25f)
-                        else Color.White.copy(alpha = 0.15f)
-                    ) {
-                        Text(
-                            text = if (selectedAudioEngine == AudioEngineType.OBOE) "Oboe C++ (Baja Latencia)" else "Media3 (AudioTrack)",
-                            style = MaterialTheme.typography.labelSmall.copy(
-                                fontWeight = FontWeight.Bold,
-                                color = if (selectedAudioEngine == AudioEngineType.OBOE) Color(0xFF34D399) else Color.White
-                            ),
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                        )
-                    }
-                }
-                Spacer(modifier = Modifier.height(2.dp))
-                Text(
-                    text = if (selectedAudioEngine == AudioEngineType.OBOE)
-                        "AAudio nativo sin microcortes"
-                    else
-                        "Pipeline del sistema Android",
-                    style = MaterialTheme.typography.bodySmall.copy(
-                        color = Color.White.copy(alpha = 0.7f),
-                        fontSize = 11.sp
-                    )
-                )
-            }
-
-            Icon(
-                imageVector = Icons.Default.Settings,
-                contentDescription = "Configurar",
-                tint = Color(0xFF38BDF8),
-                modifier = Modifier.size(20.dp)
-            )
-        }
-    }
-}
-
-/**
- * Tarjeta compacta para seleccionar Galería o Gestor de Archivos.
- */
-@Composable
-private fun ImportQuickCard(
-    title: String,
-    subtitle: String,
-    icon: ImageVector,
-    accentColor: Color,
-    testTag: String,
-    modifier: Modifier = Modifier,
-    onClick: () -> Unit
-) {
-    Card(
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
-        modifier = modifier
-            .border(1.dp, accentColor.copy(alpha = 0.4f), RoundedCornerShape(16.dp))
-            .clickable(onClick = onClick)
-            .testTag(testTag)
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(38.dp)
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(accentColor.copy(alpha = 0.2f)),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = icon,
-                    contentDescription = null,
-                    tint = accentColor,
-                    modifier = Modifier.size(22.dp)
-                )
-            }
-            Column {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                    color = Color.White
-                )
-                Text(
-                    text = subtitle,
-                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
-                    color = Color.White.copy(alpha = 0.65f)
-                )
-            }
-        }
-    }
-}
-
-/**
- * Tarjeta que muestra un video del historial / importados con su título, duración y progreso.
- */
-@Composable
-private fun VideoHistoryCard(
-    video: VideoEntity,
-    onPlay: () -> Unit,
-    onDelete: () -> Unit
-) {
-    Card(
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF0F172A)),
-        modifier = Modifier
-            .fillMaxWidth()
-            .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(16.dp))
-            .clickable(onClick = onPlay)
-            .testTag("video_history_item_${video.id}")
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.Top,
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                // Miniatura simulada con insignia de duración
-                Box(
-                    modifier = Modifier
-                        .size(width = 86.dp, height = 66.dp)
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(
-                            Brush.linearGradient(
-                                listOf(Color(0xFF1E293B), Color(0xFF0F172A))
-                            )
-                        )
-                        .border(1.dp, Color.White.copy(alpha = 0.15f), RoundedCornerShape(10.dp)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Movie,
-                        contentDescription = null,
-                        tint = Color(0xFF38BDF8).copy(alpha = 0.7f),
-                        modifier = Modifier.size(30.dp)
-                    )
-
-                    // Insignia de duración en la esquina inferior derecha
-                    Surface(
-                        shape = RoundedCornerShape(4.dp),
-                        color = Color.Black.copy(alpha = 0.8f),
-                        modifier = Modifier
-                            .align(Alignment.BottomEnd)
-                            .padding(4.dp)
-                    ) {
-                        Text(
-                            text = video.formattedDuration.ifEmpty { "00:00" },
-                            style = MaterialTheme.typography.labelSmall.copy(
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color.White
-                            ),
-                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
-                        )
-                    }
-                }
-
-                // Información textual del archivo
-                Column(
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    // Título del archivo
-                    Text(
-                        text = video.name,
-                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                        color = Color.White,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
-                    )
-
-                    // Fila con duración y tamaño
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                imageVector = Icons.Default.Schedule,
-                                contentDescription = null,
-                                tint = Color(0xFF38BDF8),
-                                modifier = Modifier.size(13.dp)
-                            )
-                            Spacer(modifier = Modifier.width(3.dp))
-                            Text(
-                                text = video.formattedDuration.ifEmpty { "00:00" },
-                                style = MaterialTheme.typography.bodySmall.copy(
-                                    fontSize = 11.sp,
-                                    color = Color.White.copy(alpha = 0.8f)
-                                )
-                            )
-                        }
-
-                        if (video.formattedSize.isNotEmpty()) {
-                            Text(
-                                text = "•",
-                                style = MaterialTheme.typography.bodySmall.copy(color = Color.White.copy(alpha = 0.4f))
-                            )
-                            Text(
-                                text = video.formattedSize,
-                                style = MaterialTheme.typography.bodySmall.copy(
-                                    fontSize = 11.sp,
-                                    color = Color.White.copy(alpha = 0.8f)
-                                )
-                            )
-                        }
-                    }
-
-                    // Estado de visualización
-                    if (video.isCompleted) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                imageVector = Icons.Default.CheckCircle,
-                                contentDescription = null,
-                                tint = Color(0xFF34D399),
-                                modifier = Modifier.size(13.dp)
-                            )
-                            Spacer(modifier = Modifier.width(3.dp))
-                            Text(
-                                text = "Visto completo",
-                                style = MaterialTheme.typography.bodySmall.copy(
-                                    fontSize = 11.sp,
-                                    color = Color(0xFF34D399),
-                                    fontWeight = FontWeight.Medium
-                                )
-                            )
-                        }
-                    } else if (video.lastPositionMs > 0L) {
-                        val progressText = VideoUtils.formatDuration(video.lastPositionMs)
-                        Text(
-                            text = "En pausa en $progressText",
-                            style = MaterialTheme.typography.bodySmall.copy(
-                                fontSize = 11.sp,
-                                color = Color(0xFF38BDF8)
-                            )
-                        )
-                    } else {
-                        Text(
-                            text = "Listo para reproducir",
-                            style = MaterialTheme.typography.bodySmall.copy(
-                                fontSize = 11.sp,
-                                color = Color.White.copy(alpha = 0.5f)
-                            )
-                        )
-                    }
-                }
-
-                // Botón de eliminar del historial
-                IconButton(
-                    onClick = onDelete,
-                    modifier = Modifier
-                        .size(36.dp)
-                        .testTag("delete_video_${video.id}")
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.DeleteOutline,
-                        contentDescription = "Eliminar de la lista",
-                        tint = Color.White.copy(alpha = 0.45f),
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
-            }
-
-            // Barra de progreso de visualización si ya se inició la reproducción
-            if (video.durationMs > 0L && video.lastPositionMs > 0L) {
-                val progress = (video.lastPositionMs.toFloat() / video.durationMs.toFloat()).coerceIn(0f, 1f)
-                Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    LinearProgressIndicator(
-                        progress = { progress },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(4.dp)
-                            .clip(RoundedCornerShape(2.dp)),
-                        color = Color(0xFF38BDF8),
-                        trackColor = Color.White.copy(alpha = 0.15f)
-                    )
-                }
-            }
-
-            // Botón de acción principal para reproducir / reanudar
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                TextButton(
-                    onClick = onPlay,
-                    modifier = Modifier.testTag("play_video_button_${video.id}")
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.PlayArrow,
-                        contentDescription = null,
-                        tint = Color(0xFF38BDF8),
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(
-                        text = if (video.lastPositionMs > 0L && !video.isCompleted) "Reanudar" else "Reproducir",
-                        style = MaterialTheme.typography.labelMedium.copy(
-                            fontWeight = FontWeight.Bold,
-                            color = Color(0xFF38BDF8)
-                        )
-                    )
-                }
-            }
-        }
-    }
-}
-
-/**
- * Estado vacío cuando aún no se ha importado ni visto ningún video.
- */
-@Composable
-private fun EmptyImportedVideosCard(
-    onImportClick: () -> Unit
-) {
-    Card(
-        shape = RoundedCornerShape(18.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF0F172A)),
-        modifier = Modifier
-            .fillMaxWidth()
-            .border(1.dp, Color.White.copy(alpha = 0.1f), RoundedCornerShape(18.dp))
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(28.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(60.dp)
-                    .clip(CircleShape)
-                    .background(Color(0xFF1E293B)),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Default.VideoLibrary,
-                    contentDescription = null,
-                    tint = Color(0xFF38BDF8).copy(alpha = 0.8f),
-                    modifier = Modifier.size(32.dp)
-                )
-            }
-            Text(
-                text = "Tu biblioteca está lista",
-                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                color = Color.White
-            )
-            Text(
-                text = "Importa un archivo arriba desde tu Galería o Gestor de Archivos para comenzar a disfrutar de audio de baja latencia.",
-                style = MaterialTheme.typography.bodySmall,
-                color = Color.White.copy(alpha = 0.65f),
-                textAlign = TextAlign.Center
-            )
-            TextButton(
-                onClick = onImportClick,
-                modifier = Modifier.testTag("empty_state_import_button")
-            ) {
-                Icon(
-                    imageVector = Icons.Default.PhotoLibrary,
-                    contentDescription = null,
-                    tint = Color(0xFF38BDF8),
-                    modifier = Modifier.size(16.dp)
-                )
-                Spacer(modifier = Modifier.width(6.dp))
-                Text(
-                    text = "Seleccionar mi primer video",
-                    style = MaterialTheme.typography.labelMedium.copy(
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0xFF38BDF8)
-                    )
-                )
-            }
-        }
-    }
-}
-
-/**
- * Sección de formatos compatibles nativamente.
- */
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-private fun SupportedFormatsSection() {
-    Card(
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B).copy(alpha = 0.6f)),
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Column(
-            modifier = Modifier.padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Movie,
-                    contentDescription = null,
-                    tint = Color(0xFF38BDF8),
-                    modifier = Modifier.size(18.dp)
-                )
-                Text(
-                    text = "Formatos soportados nativamente",
-                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                    color = Color.White
-                )
-            }
-
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                val formats = listOf("MP4", "MKV", "WebM", "AVI", "MOV", "TS", "3GP", "FLV")
-                formats.forEach { format ->
-                    SuggestionChip(
-                        onClick = {},
-                        label = { Text(format, style = MaterialTheme.typography.labelSmall.copy(color = Color.White)) },
-                        colors = SuggestionChipDefaults.suggestionChipColors(
-                            containerColor = Color(0xFF0F172A)
-                        ),
-                        border = SuggestionChipDefaults.suggestionChipBorder(
-                            enabled = true,
-                            borderColor = Color.White.copy(alpha = 0.15f)
-                        )
-                    )
-                }
-            }
-        }
-    }
-}
-
-/**
- * Tarjeta que detalla el soporte de arquitecturas y aceleración.
- */
-@Composable
-private fun ArchitectureInfoCard() {
-    Card(
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B).copy(alpha = 0.35f)),
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Row(
-            modifier = Modifier.padding(14.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            Icon(
-                imageVector = Icons.Default.Speed,
-                contentDescription = null,
-                tint = Color(0xFF38BDF8),
-                modifier = Modifier.size(22.dp)
-            )
-            Column {
-                Text(
-                    text = "Arquitectura optimizada en 32 y 64 bits",
-                    style = MaterialTheme.typography.titleSmall.copy(
-                        fontWeight = FontWeight.SemiBold,
-                        color = Color.White
-                    )
-                )
-                Text(
-                    text = "Compilado para armeabi-v7a, arm64-v8a, x86 y x86_64 con aceleración nativa por hardware.",
-                    style = MaterialTheme.typography.bodySmall.copy(
-                        fontSize = 11.sp,
-                        color = Color.White.copy(alpha = 0.65f)
-                    )
-                )
-            }
         }
     }
 }

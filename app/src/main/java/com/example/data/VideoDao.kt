@@ -60,6 +60,12 @@ interface VideoDao {
     suspend fun deleteById(id: Long)
 
     /**
+     * Modifica el nombre personalizado de un video importado por su ID.
+     */
+    @Query("UPDATE video_history SET name = :newName WHERE id = :id")
+    suspend fun updateName(id: Long, newName: String)
+
+    /**
      * Limpia todo el historial de videos importados.
      */
     @Query("DELETE FROM video_history")

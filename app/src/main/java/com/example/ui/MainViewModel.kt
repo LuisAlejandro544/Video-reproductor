@@ -134,10 +134,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /**
-     * Actualiza la posición y duración durante la reproducción en tiempo real.
+     * Actualiza la posición y duración durante la reproducción en segundo plano.
+     * Se ejecuta estrictamente en Dispatchers.IO para no interferir con la fluidez del hilo principal (UI).
      */
     fun updatePlaybackProgress(uriString: String, positionMs: Long, durationMs: Long) {
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
             repository.updatePlaybackProgress(uriString, positionMs, durationMs)
         }
     }
@@ -153,6 +154,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
             }
             repository.deleteVideo(id)
+        }
+    }
+
+    /**
+     * Modifica el nombre personalizado de un video importado.
+     * Utiliza el motor nativo de Rust (NovaRustCore.sanitizeTitle) para sanitizar
+     * y validar el nuevo nombre de forma segura antes de persistirlo en Room.
+     */
+    fun renameVideo(id: Long, rawNewName: String) {
+        viewModelScope.launch {
+            val sanitizedName = com.example.rust.NovaRustCore.sanitizeTitle(rawNewName)
+            repository.renameVideo(id, sanitizedName)
         }
     }
 

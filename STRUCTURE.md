@@ -37,8 +37,10 @@ Este documento detalla la organización de carpetas, responsabilidades de cada m
 │       │   │   ├── native-lib.cpp    # Puntos de entrada JNI (puente hacia Kotlin con nativeFlush)
 │       │   │   ├── OboeAudioEngine.h # Declaración de la clase del motor de audio Oboe (búfer circular estático, flush() y DSP)
 │       │   │   ├── OboeAudioEngine.cpp # Implementación nativa con búfer de anillo estático, vaciado atómico instantáneo y filtros DSP
-│       │   │   ├── VideoColorEngine.h # Declaración del motor de sombreadores OpenGL ES (incluye uniforms uSunMode, uAnime4kMode, uAnime4kStrength)
-│       │   │   └── VideoColorEngine.cpp # Shaders GLSL, texturizado OES, matriz de color, nitidez, descanso visual, modo sol extremo, desenfoque pillarbox, AMD FSR 1.0 (EASU + RCAS) y Anime4K (bloc97 Lite/Pro/Restore)
+│       │   │   ├── VideoColorEngine.h # Declaración del motor de sombreadores OpenGL ES (incluye uniforms y texturas FBO)
+│       │   │   ├── VideoColorEngine.cpp # Motor modular de procesamiento visual en GPU (GLES 2.0 / 3.0)
+│       │   │   └── shaders/          # Catálogo modular de código sombreador en GPU
+│       │   │       └── VideoShaders.h # GLSL Shaders centralizados: OES, Color/Nitidez, Pillarbox Blur, AMD FSR 1.0 (EASU+RCAS) y Anime4K
 │       │   │
 │       │   ├── java/com/example/     # Código fuente Kotlin (UI y Lógica)
 │       │   │   ├── MainActivity.kt   # Actividad raíz y enrutador de pantallas
@@ -77,16 +79,39 @@ Este documento detalla la organización de carpetas, responsabilidades de cada m
 │       │   │   │   ├── PillarboxBlurSheet.kt  # Pantalla exclusiva e independiente de desenfoque de fondo vertical (Pillarbox)
 │       │   │   │   ├── PlaybackSpeedSheet.kt  # Pantalla exclusiva e independiente de velocidad de reproducción (hasta 2x)
 │       │   │   │   ├── PlayerToolsSideSheet.kt # Panel lateral de navegación exclusiva entre herramientas
-│       │   │   │   ├── SettingsScreen.kt      # Centro modular de configuración por pantallas independientes (Hub + Subpantallas dedicadas)
+│       │   │   │   ├── SettingsScreen.kt      # Coordinador principal de configuración con navegación Hub-and-Spoke
 │       │   │   │   ├── StereoMonoSheet.kt     # Pantalla exclusiva e independiente de enrutamiento estéreo/mono y efecto Haas 3D
 │       │   │   │   ├── SubtitlesBottomSheet.kt # Panel modal de selección de subtítulos internos/externos y tamaño tipográfico
 │       │   │   │   ├── SunModeSheet.kt        # Pantalla exclusiva e independiente de Modo Sol Extremo y Accesibilidad en GPU
 │       │   │   │   ├── VideoEqualizerSheet.kt # Pantalla exclusiva e independiente de ecualización de video (color, nitidez, descanso)
-│       │   │   │   ├── VideoImportScreen.kt   # Pantalla interactiva: biblioteca, diálogo de confirmación de eliminación y selectores
-│       │   │   │   ├── VideoPlayerScreen.kt   # Pantalla de reproducción (doble toque 5s adelanto/atraso, rotación, 2X y gestos)
+│       │   │   │   ├── VideoImportScreen.kt   # Coordinador modular de biblioteca e importación de videos
+│       │   │   │   ├── VideoPlayerScreen.kt   # Coordinador modular de reproducción con ExoPlayer y OpenGL
 │       │   │   │   ├── VideoSourceDialog.kt   # Diálogo para alternar Galería / Gestor de archivos
 │       │   │   │   ├── VoiceNightAudioSheet.kt # Pantalla exclusiva e independiente de Compresor Dinámico y Voces Claras en C++
-│       │   │   │   └── theme/                 # Paleta de colores, tipografía y tema oscuro
+│       │   │   │   │
+│       │   │   │   ├── library/          # Módulos desacoplados de la biblioteca de medios
+│       │   │   │   │   ├── ImportQuickCard.kt    # Tarjeta de importación rápida con selector SAF / Galería
+│       │   │   │   │   ├── LibraryDialogs.kt     # Diálogos de confirmación para eliminación individual o vaciado
+│       │   │   │   │   ├── LibraryFooterCards.kt # Tarjetas informativas de formatos compatibles y arquitectura
+│       │   │   │   │   ├── LibraryHeaders.kt     # Barra de título de la app e indicador de estado del motor de audio
+│       │   │   │   │   └── VideoHistoryCard.kt   # Tarjeta de elemento de video con progreso y acciones directas
+│       │   │   │   │
+│       │   │   │   ├── player/           # Módulos desacoplados del reproductor de video
+│       │   │   │   │   ├── PlayerGestureDetector.kt # Detección de gestos (brillo, volumen, avance 2X, doble toque ±5s)
+│       │   │   │   │   ├── PlayerHudIndicators.kt   # Indicadores visuales flotantes (HUD ±5s, 2X pill, slider brillo/vol)
+│       │   │   │   │   ├── PlayerOrientationHandler.kt # Detección por sensor de hardware (OrientationEventListener)
+│       │   │   │   │   └── PlayerOverlayControls.kt # Barras superior e inferior y controles de reproducción centrales
+│       │   │   │   │
+│       │   │   │   ├── settings/         # Subpantallas independientes de ajustes (Hub-and-Spoke)
+│       │   │   │   │   ├── ArchitectureSubScreen.kt # Diagnóstico de arquitectura (ARM32/64, x86, Android Go)
+│       │   │   │   │   ├── AudioEngineSubScreen.kt  # Configuración detallada de motores (Oboe vs Media3) y test senoidal
+│       │   │   │   │   ├── AudioOutputSubScreen.kt  # Configuración de balance, canal mono/estéreo y efecto Haas 3D
+│       │   │   │   │   ├── SettingsMainHub.kt       # Menú principal con tarjetas categorizadas
+│       │   │   │   │   ├── SettingsModels.kt        # Enums y modelos de rutas de subpantallas de ajustes
+│       │   │   │   │   ├── StorageSubScreen.kt      # Gestión de historial persistente Room y limpieza de caché
+│       │   │   │   │   └── VideoSubScreen.kt        # Ajustes de aceleración GPU, OpenGL ES y renderizado
+│       │   │   │   │
+│       │   │   │   └── theme/            # Paleta de colores, tipografía y tema oscuro
 │       │   │   │       ├── Color.kt
 │       │   │   │       ├── Theme.kt
 │       │   │   │       └── Type.kt
@@ -175,9 +200,14 @@ Este documento detalla la organización de carpetas, responsabilidades de cada m
 4. **Preservación Acústica de Tono (Sonic Pitch Preservation):** El control de velocidad (hasta 2.0x) implementa el algoritmo Sonic integrado en Media3, permitiendo acelerar o ralentizar la reproducción conservando la afinación y timbre de voces e instrumentos.
 5. **Soporte Arquitectural Universal:** La compilación de C++ y Rust está parametrizada para generar binarios tanto en 32 bits (`armeabi-v7a`, `x86`) como en 64 bits (`arm64-v8a`, `x86_64`), permitiendo que el mismo código fuente ejecute en cualquier dispositivo.
 6. **Sin Dependencias de Servicios Propietarios:** No se utilizan APIs de Google Play Services ni bibliotecas cerradas con licencias restrictivas, facilitando la publicación en plataformas abiertas y tiendas alternativas.
-7. **Pantalla Independiente de Configuración:** En sustitución de diálogos emergentes o tarjetas modales, la configuración se aloja en una pantalla propia (`SettingsScreen`) con navegación limpia (`AppScreen`), preservación de la posición del video en reproducción, verificación física de salida mediante síntesis senoidal en vivo y telemetría nativa JNI continua.
+7. **Pantalla Independiente de Configuración (Arquitectura Hub-and-Spoke):** Organizada mediante un menú raíz limpio (`SettingsMainHub`) que navega hacia subpantallas modulares dedicadas (`AudioEngineSubScreen`, `AudioOutputSubScreen`, `VideoSubScreen`, `StorageSubScreen`, `ArchitectureSubScreen`), preservando la posición de reproducción y ofreciendo pruebas acústicas senoidales y telemetría en tiempo real.
 8. **Persistencia Local Reactiva con Room:** Registro estructurado de videos importados y vistos en SQLite local (`VideoEntity`, `VideoDao`, `AppDatabase`). La interfaz observa de forma reactiva un `Flow<List<VideoEntity>>` a través de `MainViewModel`, mostrando títulos, duraciones, tamaños, barras de progreso y reanudación instantánea desde la última posición guardada.
 9. **Compilación en la Nube Autónoma (CI/CD sin Caché):** Flujo de GitHub Actions (`build-debug.yml`) que garantiza compilación limpia desde cero con generación no interactiva de firma digital (`generate_debug_keystore.sh`). Permite a desarrolladores sin PC compilar y descargar el APK de depuración directamente en su teléfono móvil.
 10. **Búfer de RAM Adaptativo y Protección Anti-OOM (`PlayerLoadControlHelper`):** Asignación estricta de memoria de carga en ExoPlayer ajustada a la memoria RAM real del dispositivo y edición de Android (Android Go). En dispositivos con ≤ 2.5 GB de RAM, impone un búfer conservador de 4s a 10s y un tope de 16 MB a 24 MB en `DefaultAllocator`, previniendo que el Low Memory Killer (LMK) cierre la aplicación en segundo plano o durante videos de alta tasa de bits.
 11. **Gestión Desacoplada de Subtítulos (SRT y WebVTT):** `SubtitleView` integrado en capa superior sobre la superficie de video nativa OpenGL. Soporte dual para selección de pistas internas decodificadas automáticamente por el demuxer e inyección en caliente de archivos externos (`.srt` / `.vtt`) mediante `MediaItem.SubtitleConfiguration` y Storage Access Framework, sin reiniciar el pipeline de video ni perder la posición de reproducción.
 12. **Arquitectura Modular de Herramientas del Reproductor:** Cada funcionalidad de ajuste visual o acústico dispone de su propia pantalla o panel modal independiente y exclusivo (`VideoEqualizerSheet` para color/nitidez/descanso visual, `PillarboxBlurSheet` para relleno desenfocado de fondos verticales, `FsrUpscaleSheet` para Super Resolución AMD FSR 1.0, `AspectRatioSheet` para relación de aspecto, `AudioEngineSheet` para conmutación de motor de audio, `PlaybackSpeedSheet` para velocidad y `SubtitlesBottomSheet` para subtítulos). La navegación hacia estas herramientas se orquesta a través del panel lateral derecho `PlayerToolsSideSheet`, evitando sobrecargar la pantalla principal y facilitando la adición de nuevas herramientas de manera desacoplada.
+13. **Desarrollo Modular y Desacoplamiento de UI & Shaders C++:**
+    - **Capa C++ / GLSL:** Extracción de todos los sombreadores GLSL en `shaders/VideoShaders.h`, dejando `VideoColorEngine.cpp` enfocado estrictamente en la gestión de programas de sombreado, compilación de shaders, enlace de uniforms y orquestación de renderizado FBO en dos fases.
+    - **Biblioteca (`com.example.ui.library`):** Fragmentación de `VideoImportScreen.kt` en componentes reutilizables con responsabilidades claras: cabecera (`LibraryHeaders.kt`), tarjeta de importación rápida (`ImportQuickCard.kt`), tarjeta de historial de video con mini-progreso (`VideoHistoryCard.kt`), diálogos de borrado seguro (`LibraryDialogs.kt`) y tarjetas de pie (`LibraryFooterCards.kt`).
+    - **Configuración (`com.example.ui.settings`):** Descomposición de `SettingsScreen.kt` en subpantallas modulares desacopladas que reducen la carga cognitiva y permiten extender ajustes de audio, video o almacenamiento sin alterar el coordinador.
+    - **Reproductor (`com.example.ui.player`):** Descomposición de `VideoPlayerScreen.kt` en controladores especializados: gestos táctiles concurrentes (`PlayerGestureDetector.kt`), indicadores HUD no intrusivos (`PlayerHudIndicators.kt`), rotación reactiva por sensor de hardware (`PlayerOrientationHandler.kt`) y controles táctiles superpuestos en pantalla completa (`PlayerOverlayControls.kt`).
