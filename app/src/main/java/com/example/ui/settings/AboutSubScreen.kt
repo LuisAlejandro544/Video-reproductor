@@ -15,6 +15,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -46,19 +47,19 @@ fun AboutSubScreen(
             TopAppBar(
                 title = {
                     Column {
-                        Text("Arquitectura y Distribución", fontWeight = FontWeight.Bold, color = Color.White, fontSize = 18.sp)
-                        Text("Detalles de portabilidad y compilación", fontSize = 12.sp, color = Color(0xFFF59E0B))
+                        Text("Arquitectura y Distribución", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface, fontSize = 18.sp)
+                        Text("Detalles de portabilidad y compilación", fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
                     }
                 },
                 navigationIcon = {
                     IconButton(onClick = onBack, modifier = Modifier.testTag("subscreen_about_back")) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Volver", tint = Color.White)
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Volver", tint = MaterialTheme.colorScheme.onSurface)
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color(0xFF0F172A))
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface)
             )
         },
-        containerColor = Color(0xFF070B14)
+        containerColor = MaterialTheme.colorScheme.background
     ) { padding ->
         Column(
             modifier = Modifier
@@ -70,28 +71,28 @@ fun AboutSubScreen(
         ) {
             Card(
                 shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFF0F172A)),
-                border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.08f)),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text("Canal de Distribución y Portabilidad", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                    Text("Canal de Distribución y Portabilidad", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
                     Text(
                         text = "Nova Video Player está diseñado y optimizado para su distribución independiente y tiendas alternativas (Uptodown / descarga directa de APK). No depende de servicios propietarios de Google Play Services para su núcleo multimedia.",
                         fontSize = 12.sp,
-                        color = Color.White.copy(alpha = 0.75f),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         lineHeight = 16.sp
                     )
                     Text(
                         text = "Compilado nativamente para 32-bit (armeabi-v7a, x86) y 64-bit (arm64-v8a, x86_64) con soporte de bajo consumo para dispositivos de recursos contenidos (Android Go).",
                         fontSize = 12.sp,
-                        color = Color.White.copy(alpha = 0.75f),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         lineHeight = 16.sp
                     )
                     Text(
                         text = "Licencias permisivas: todas las bibliotecas utilizadas (Google Oboe, Jetpack Compose, Media3) operan bajo licencia Apache 2.0 garantizando máxima libertad y portabilidad.",
                         fontSize = 12.sp,
-                        color = Color.White.copy(alpha = 0.75f),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         lineHeight = 16.sp
                     )
                 }

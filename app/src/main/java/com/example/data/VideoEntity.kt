@@ -66,14 +66,18 @@ data class VideoEntity(
     val eqFsrSharpness: Float = 0.75f,
     val eqSunMode: Float = 0.0f,
     val eqAnime4kMode: Int = 0,
-    val eqAnime4kStrength: Float = 0.75f
+    val eqAnime4kStrength: Float = 0.75f,
+
+    // Bandera explícita que indica si este video individual tiene configuraciones personalizadas activas
+    val hasCustomConfig: Boolean = false
 ) {
     /**
      * Determina si el usuario ha guardado configuraciones personalizadas para este video
-     * que difieren de los valores por defecto del sistema.
+     * que difieren de los valores por defecto del sistema o si fueron marcadas explícitamente.
      */
     fun hasCustomSettings(): Boolean {
-        return playbackSpeed != 1.0f ||
+        return hasCustomConfig ||
+                playbackSpeed != 1.0f ||
                 aspectRatioMode != "FIT" ||
                 audioChannelMode != "STEREO" ||
                 audioEngine != "MEDIA3" ||

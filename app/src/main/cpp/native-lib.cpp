@@ -11,6 +11,9 @@
 #include <jni.h>
 #include <android/log.h>
 #include <memory>
+#include <string>
+#include <vector>
+#include <vulkan/vulkan.h>
 #include "OboeAudioEngine.h"
 #include "VideoColorEngine.h"
 
@@ -373,6 +376,95 @@ Java_com_example_opengl_NativeVideoFilter_nativeRelease(
     jobject /* this */
 ) {
     Java_com_example_opengl_NativeVideoFilter_internalNativeRelease(env, nullptr);
+}
+
+/**
+ * Consulta de estado y capacidades de Vulkan a nivel de driver nativo.
+ *
+ * Determina la versión del loader mediante vkGetInstanceProcAddr, inicializa una
+ * instancia temporal ligera y recupera las propiedades físicas de la GPU (nombre del
+ * dispositivo y versión del driver de hardware).
+ */
+JNIEXPORT jstring JNICALL
+Java_com_example_vulkan_VulkanCapabilities_nativeQueryVulkanDriver(
+    JNIEnv* env,
+    jclass /* clazz */
+) {
+    // 1. Obtener función vkEnumerateInstanceVersion dinámicamente si está disponible
+    auto pfnEnumerateInstanceVersion = reinterpret_cast<PFN_vkEnumerateInstanceVersion>(
+        vkGetInstanceProcAddr(nullptr, "vkEnumerateInstanceVersion")
+    );
+
+    uint32_t instanceVersion = VK_API_VERSION_1_0;
+    if (pfnEnumerateInstanceVersion) {
+        VkResult res = pfnEnumerateInstanceVersion(&instanceVersion);
+        if (res != VK_SUCCESS) {
+            instanceVersion = VK_API_VERSION_1_0;
+        }
+    }
+
+    uint32_t major = VK_VERSION_MAJOR(instanceVersion);
+    uint32_t minor = VK_VERSION_MINOR(instanceVersion);
+    uint32_t patch = VK_VERSION_PATCH(instanceVersion);
+
+    // 2. Crear instancia temporal básica de Vulkan para enumerar GPUs físicas
+    VkApplicationInfo appInfo{};
+    appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
+    appInfo.pApplicationName = "Nova Video Player";
+    appInfo.applicationVersion = VK_MAKE_VERSION(1, 0, 0);
+    appInfo.pEngineName = "NovaVulkanEngine";
+    appInfo.engineVersion = VK_MAKE_VERSION(1, 0, 0);
+    appInfo.apiVersion = instanceVersion;
+
+    VkInstanceCreateInfo createInfo{};
+    createInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
+    createInfo.pApplicationInfo = &appInfo;
+    createInfo.enabledExtensionCount = 0;
+    createInfo.ppEnabledExtensionNames = nullptr;
+    createInfo.enabledLayerCount = 0;
+    createInfo.ppEnabledLayerNames = nullptr;
+
+    VkInstance instance = VK_NULL_HANDLE;
+    VkResult res = vkCreateInstance(&createInfo, nullptr, &instance);
+    if (res != VK_SUCCESS) {
+        // Fallback a API 1.0 si falló la versión solicitada
+        appInfo.apiVersion = VK_API_VERSION_1_0;
+        res = vkCreateInstance(&createInfo, nullptr, &instance);
+    }
+
+    if (res != VK_SUCCESS) {
+        std::string err = "ERROR|No se pudo inicializar instancia Vulkan (Código VkResult: " + std::to_string(res) + ")";
+        return env->NewStringUTF(err.c_str());
+    }
+
+    // 3. Enumerar GPUs disponibles
+    uint32_t deviceCount = 0;
+    vkEnumeratePhysicalDevices(instance, &deviceCount, nullptr);
+
+    if (deviceCount == 0) {
+        vkDestroyInstance(instance, nullptr);
+        return env->NewStringUTF("ERROR|No se detectaron dispositivos físicos Vulkan en el hardware.");
+    }
+
+    std::vector<VkPhysicalDevice> devices(deviceCount);
+    vkEnumeratePhysicalDevices(instance, &deviceCount, devices.data());
+
+    VkPhysicalDeviceProperties props{};
+    vkGetPhysicalDeviceProperties(devices[0], &props);
+
+    std::string deviceName = props.deviceName;
+    uint32_t driverMajor = VK_VERSION_MAJOR(props.driverVersion);
+    uint32_t driverMinor = VK_VERSION_MINOR(props.driverVersion);
+    uint32_t driverPatch = VK_VERSION_PATCH(props.driverVersion);
+    std::string driverVer = "v" + std::to_string(driverMajor) + "." + std::to_string(driverMinor) + "." + std::to_string(driverPatch);
+
+    std::string extraInfo = "Instancia: v" + std::to_string(major) + "." + std::to_string(minor) + "." + std::to_string(patch) +
+                            " | GPUs disponibles: " + std::to_string(deviceCount);
+
+    vkDestroyInstance(instance, nullptr);
+
+    std::string response = "OK|" + deviceName + "|" + driverVer + "|" + extraInfo;
+    return env->NewStringUTF(response.c_str());
 }
 
 } // extern "C"

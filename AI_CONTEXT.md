@@ -54,17 +54,23 @@ Este archivo proporciona el contexto técnico, arquitectónico y operativo neces
 - Cuando el motor seleccionado es `AudioEngineType.OBOE`, las tramas PCM son redirigidas a `OboeAudioEngine.writePcmData(...)` y el búfer de salida para el `AudioTrack` estándar se vacía (`replaceOutputBuffer(0)`), silenciando la salida tradicional sin detener el flujo de reloj de ExoPlayer.
 - Cuando el motor es `AudioEngineType.MEDIA3`, las tramas pasan sin alteración hacia el `AudioTrack` habitual.
 
-### 3. Interfaz de Usuario en Jetpack Compose
-- Toda la interfaz sigue las especificaciones de **Material Design 3 (M3)** con tema oscuro optimizado para reproducción de video (ahorro de batería en pantallas OLED).
+### 3. Interfaz de Usuario en Jetpack Compose y Material You
+- Toda la interfaz sigue rigurosamente las especificaciones de **Material Design 3 (M3)** e integra soporte completo para **Material You (Dynamic Color)**:
+  - **Color Dinámico:** En Android 12+ (API 31+), se extraen automáticamente los colores tonales del fondo de pantalla del dispositivo mediante `dynamicDarkColorScheme(context)` y `dynamicLightColorScheme(context)`, permitiendo al usuario activarlo o desactivarlo según prefiera.
+  - **Selector de Tema Tri-Estado:** Soporte para **Modo Oscuro** (`AppThemeMode.DARK`), **Modo Claro** (`AppThemeMode.LIGHT`) y **Seguir al Sistema** (`AppThemeMode.SYSTEM`), mapeado reactivamente mediante `isSystemInDarkTheme()` en `Theme.kt`.
+  - **Persistencia Reactiva:** Las preferencias se guardan de forma instantánea en `AppPreferences` y son expuestas por `MainViewModel` mediante `StateFlow` hacia `MyApplicationTheme` en `MainActivity.kt`.
+  - **Aislamiento Tipográfico:** Mantiene bloqueada la escala en `fontScale = 1.0f` para garantizar legibilidad y evitar deformaciones en la diagramación en cualquier combinación cromática.
 - Cada componente interactivo cuenta con su identificador `Modifier.testTag(...)` para garantizar verificabilidad automatizada.
 - El ciclo de vida de la reproducción está sincronizado con `LocalLifecycleOwner.current` para pausar inmediatamente el audio y video al salir de la aplicación.
 
 ### 4. Navegación y Centro de Configuración Modular (Settings Hub)
 - La arquitectura de navegación utiliza la máquina de estados `AppScreen` (`HOME`, `PLAYER`, `SETTINGS`) en `MainActivity.kt`.
 - `SettingsScreen` está estructurado como un **Centro de Ajustes Modular (Hub-and-Spoke)** que organiza las configuraciones en subpantallas dedicadas y autónomas para máxima ergonomía:
+  - `APPEARANCE`: Selector de tema (Oscuro, Claro, Sistema), interruptor de Material You y tarjeta de previsualización en vivo.
   - `AUDIO_ENGINE`: Alternancia en caliente entre Oboe C++ y Media3.
   - `AUDIO_CHANNELS`: Enrutamiento estéreo nativo, mono centrado (L+R)/2 y pseudo-estéreo espacial (efecto Haas 3D en C++).
   - `AUDIO_TEST`: Prueba física de sonido senoidal de 440 Hz en tiempo real para verificar el canal de audio del hardware.
+  - `FORMATS`: Compatibilidad multimedia integral: contenedores (MP4, MKV, WebM, etc.), códecs acelerados por hardware en GPU (H.264, HEVC, AV1, VP9), códecs de audio y subtítulos.
   - `TELEMETRY`: Métricas JNI y de hardware (tramas C++, backend AAudio/OpenSL ES, sample rate, buffers y memoria RAM).
   - `ABOUT`: Información de compatibilidad 32/64 bits, Android Go y distribución directa de APK.
 - Al regresar (mediante el botón de navegación del TopAppBar o el `BackHandler` del sistema), se restaura el contexto previo y se reanuda la reproducción en la posición exacta (`currentPlaybackPositionMs`).
@@ -305,5 +311,18 @@ Este archivo proporciona el contexto técnico, arquitectónico y operativo neces
   - `VideoPlayerScreen` inicializa sus controles a partir de `initialVideoEntity`.
   - Cada vez que el usuario ajusta un parámetro o cierra un panel modal de herramientas (`onDismiss`), se dispara `saveSettings()` persistiendo las preferencias en la base de datos a través de `MainViewModel`.
   - La persistencia también se asegura al salir del reproductor (`BackHandler` y `onBack`).
+
+### 26. Verificación de Capacidades en Tiempo de Ejecución y Enlace NDK de Vulkan 1.1+ (Fase 6)
+- **Motivación y Arquitectura Gráfica:**
+  - El proyecto prepara la integración de un pipeline de renderizado nativo basado en Vulkan 1.1+ para reducir la sobrecarga de CPU y el consumo de batería en comparación con OpenGL ES.
+  - Para evitar fallos o inestabilidad en terminales que carecen de soporte Vulkan completo o con controladores 1.0 defectuosos, se implementó un sistema de verificación estricto en dos niveles:
+    1. **Nivel del Sistema Operativo Android:** `VulkanCapabilities.kt` consulta a `PackageManager` por `FEATURE_VULKAN_HARDWARE_VERSION` (requiriendo versión codificada >= `0x00401000`, correspondiente a Vulkan 1.1) y `FEATURE_VULKAN_HARDWARE_LEVEL`.
+    2. **Nivel del Controlador Nativo C++ (JNI):** La función `nativeQueryVulkanDriver()` en `native-lib.cpp` resuelve dinámicamente `vkEnumerateInstanceVersion` con `vkGetInstanceProcAddr`, inicializa una instancia ligera y recupera las propiedades físicas de la GPU (`VkPhysicalDeviceProperties`) para obtener el modelo exacto del chip gráfico y la versión del driver.
+  - **Enlace NDK y Compatibilidad:**
+    - `CMakeLists.txt` enlaza directamente la biblioteca del sistema `vulkan` en `novaplayer_native`.
+    - Compatible con las 4 arquitecturas del proyecto: 32 bits (`armeabi-v7a`, `x86`) y 64 bits (`arm64-v8a`, `x86_64`).
+  - **Telemetría y Diagnóstico Visual:**
+    - `TelemetrySubScreen.kt` incluye una tarjeta de telemetría gráfica en tiempo real que expone el estado de Vulkan, el pipeline activo (OpenGL ES con OES Zero-Copy), el nombre de la GPU física y la versión del controlador.
+
 
 

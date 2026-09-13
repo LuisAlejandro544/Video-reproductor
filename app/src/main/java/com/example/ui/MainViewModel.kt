@@ -11,6 +11,7 @@ import com.example.data.AppPreferences
 import com.example.data.VideoEntity
 import com.example.data.VideoRepository
 import com.example.model.VideoItem
+import com.example.ui.theme.AppThemeMode
 import com.example.utils.VideoUtils
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -45,11 +46,39 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val selectedAudioEngine: StateFlow<AudioEngineType> = _selectedAudioEngine.asStateFlow()
 
     /**
+     * Modo de tema visual (SYSTEM, LIGHT, DARK) persistido en disco.
+     */
+    private val _appThemeMode = MutableStateFlow(appPreferences.appThemeMode)
+    val appThemeMode: StateFlow<AppThemeMode> = _appThemeMode.asStateFlow()
+
+    /**
+     * Habilitación de Material You (paleta dinámica de Android 12+) persistida en disco.
+     */
+    private val _useDynamicColor = MutableStateFlow(appPreferences.useDynamicColor)
+    val useDynamicColor: StateFlow<Boolean> = _useDynamicColor.asStateFlow()
+
+    /**
      * Actualiza y persiste la selección de motor de audio del usuario.
      */
     fun setAudioEngine(engine: AudioEngineType) {
         appPreferences.selectedAudioEngine = engine
         _selectedAudioEngine.value = engine
+    }
+
+    /**
+     * Actualiza y persiste el modo de tema visual seleccionado (Sistema, Claro, Oscuro).
+     */
+    fun setAppThemeMode(mode: AppThemeMode) {
+        appPreferences.appThemeMode = mode
+        _appThemeMode.value = mode
+    }
+
+    /**
+     * Actualiza y persiste la preferencia de color dinámico Material You.
+     */
+    fun setDynamicColor(enabled: Boolean) {
+        appPreferences.useDynamicColor = enabled
+        _useDynamicColor.value = enabled
     }
 
     init {
@@ -127,8 +156,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             formattedDuration = entity.formattedDuration
         )
         viewModelScope.launch {
-            // Actualizar marca de tiempo como video recientemente abierto preservando ajustes
-            val updatedEntity = repository.recordImportedVideo(getApplication(), videoItem)
+            // Cargar directamente la versión más reciente persistida en Room con sus ajustes individuales
+            val latestEntity = repository.getVideoById(entity.id) ?: entity
+            repository.updateLastPlayed(latestEntity.id)
+            val updatedEntity = latestEntity.copy(lastPlayedTimestamp = System.currentTimeMillis())
             onPlay(videoItem, updatedEntity.lastPositionMs, updatedEntity)
         }
     }
@@ -146,9 +177,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
      * Actualiza la posición y duración durante la reproducción en segundo plano.
      * Se ejecuta estrictamente en Dispatchers.IO para no interferir con la fluidez del hilo principal (UI).
      */
-    fun updatePlaybackProgress(uriString: String, positionMs: Long, durationMs: Long) {
+    fun updatePlaybackProgress(uriString: String, positionMs: Long, durationMs: Long, id: Long = 0L) {
         viewModelScope.launch(Dispatchers.IO) {
-            repository.updatePlaybackProgress(uriString, positionMs, durationMs)
+            repository.updatePlaybackProgress(id = id, uriString = uriString, positionMs = positionMs, durationMs = durationMs)
         }
     }
 

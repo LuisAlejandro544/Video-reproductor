@@ -25,9 +25,11 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -35,6 +37,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.audio.AudioEngineType
 import com.example.player.BufferMemoryProfile
+import com.example.vulkan.VulkanCapabilities
 
 /**
  * TelemetrySubScreen.kt - Monitoreo de Hardware y Diagnóstico de Búfer
@@ -75,6 +78,9 @@ fun TelemetrySubScreen(
         },
         containerColor = Color(0xFF070B14)
     ) { padding ->
+        val context = LocalContext.current
+        val vulkanStatus = remember { VulkanCapabilities.checkCapabilities(context) }
+
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -111,7 +117,63 @@ fun TelemetrySubScreen(
                     TelemetryItem("Perfil Búfer RAM", "${memoryProfile.profileName} (${memoryProfile.maxBufferRamMb} MB)", highlight = true)
                     TelemetryItem("Búfer Dinámico", "${memoryProfile.minBufferSec.toInt()}s - ${memoryProfile.maxBufferSec.toInt()}s")
                     TelemetryItem("RAM Total Dispositivo", "${memoryProfile.totalRamMb} MB (Android Go: ${if (memoryProfile.isLowRamDevice) "Sí" else "No"})")
-                    TelemetryItem("Motor de Subtítulos", "SRT (SubRip) y WebVTT (.vtt)")
+                    TelemetryItem("Motor de Subtítulos", "SRT (SubRip), WebVTT y SSA/ASS (Rust Core)")
+                }
+            }
+
+            Card(
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF0F172A)),
+                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE11D48).copy(alpha = 0.25f)),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("telemetry_vulkan_card")
+            ) {
+                Column(modifier = Modifier.padding(18.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Motor Gráfico & Vulkan 1.1+",
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
+                        val badgeColor = if (vulkanStatus.isVulkan11OrHigher) {
+                            Color(0xFF10B981)
+                        } else if (vulkanStatus.isSupported) {
+                            Color(0xFFF59E0B)
+                        } else {
+                            Color(0xFFEF4444)
+                        }
+                        val badgeText = if (vulkanStatus.isVulkan11OrHigher) {
+                            "Vulkan 1.1+ Listo"
+                        } else if (vulkanStatus.isSupported) {
+                            "Vulkan 1.0 (Básico)"
+                        } else {
+                            "No Compatible"
+                        }
+                        Text(
+                            text = badgeText,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = badgeColor,
+                            fontFamily = FontFamily.Monospace
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(10.dp))
+                    HorizontalDivider(color = Color.White.copy(alpha = 0.08f))
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    TelemetryItem("Pipeline Activo", "OpenGL ES 2.0 / 3.0 (Zero-Copy OES)", highlight = true)
+                    TelemetryItem("Versión API Vulkan", vulkanStatus.apiVersionString)
+                    TelemetryItem("Nivel de Hardware", vulkanStatus.hardwareLevelString)
+                    TelemetryItem("GPU Detectada", vulkanStatus.deviceName)
+                    TelemetryItem("Driver de Hardware", vulkanStatus.driverVersionString)
+                    TelemetryItem("Enlace Nativo NDK", "libvulkan.so vinculado en CMakeLists", highlight = true)
+                    TelemetryItem("Diagnóstico C++", vulkanStatus.nativeDiagnostics)
                 }
             }
         }

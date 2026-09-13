@@ -18,6 +18,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -34,6 +35,7 @@ import com.example.ui.SettingsScreen
 import com.example.ui.VideoImportScreen
 import com.example.ui.VideoPlayerScreen
 import com.example.ui.VideoSourceDialog
+import com.example.ui.theme.AppThemeMode
 import com.example.ui.theme.MyApplicationTheme
 import com.example.utils.VideoUtils
 
@@ -70,9 +72,19 @@ class MainActivity : ComponentActivity() {
         }
 
         setContent {
-            // Forzamos el tema oscuro característico de reproductores de PC
-            MyApplicationTheme(darkTheme = true) {
-                MainVideoApp()
+            val viewModel: MainViewModel = viewModel()
+            val currentThemeMode by viewModel.appThemeMode.collectAsStateWithLifecycle()
+            val useDynamicColor by viewModel.useDynamicColor.collectAsStateWithLifecycle()
+
+            MyApplicationTheme(
+                themeMode = currentThemeMode,
+                dynamicColor = useDynamicColor
+            ) {
+                MainVideoApp(
+                    viewModel = viewModel,
+                    currentThemeMode = currentThemeMode,
+                    useDynamicColor = useDynamicColor
+                )
             }
         }
     }
@@ -83,7 +95,9 @@ class MainActivity : ComponentActivity() {
  */
 @Composable
 fun MainVideoApp(
-    viewModel: MainViewModel = viewModel()
+    viewModel: MainViewModel = viewModel(),
+    currentThemeMode: AppThemeMode = AppThemeMode.SYSTEM,
+    useDynamicColor: Boolean = true
 ) {
     val context = LocalContext.current
     val activity = context as? android.app.Activity
@@ -164,6 +178,14 @@ fun MainVideoApp(
                     onEngineChanged = { newEngine ->
                         viewModel.setAudioEngine(newEngine)
                     },
+                    currentThemeMode = currentThemeMode,
+                    useDynamicColor = useDynamicColor,
+                    onThemeModeChanged = { newMode ->
+                        viewModel.setAppThemeMode(newMode)
+                    },
+                    onDynamicColorChanged = { enabled ->
+                        viewModel.setDynamicColor(enabled)
+                    },
                     onNavigateBack = {
                         currentScreen = previousScreen
                     },
@@ -175,41 +197,48 @@ fun MainVideoApp(
             AppScreen.PLAYER -> {
                 val activeVideo = currentVideo
                 if (activeVideo != null) {
-                    // Pantalla de Reproducción activa (Edge-to-Edge nativa completa)
-                    VideoPlayerScreen(
-                        videoItem = activeVideo,
-                        initialVideoEntity = currentVideoEntity,
-                        currentAudioEngine = selectedAudioEngine,
-                        initialPositionMs = currentPlaybackPositionMs,
-                        onPositionChanged = { newPos ->
-                            currentPlaybackPositionMs = newPos
-                        },
-                        onPlaybackProgress = { posMs, durMs ->
-                            viewModel.updatePlaybackProgress(activeVideo.uri.toString(), posMs, durMs)
-                        },
-                        onSaveVideoSettings = { updatedEntity ->
-                            currentVideoEntity = updatedEntity
-                            viewModel.saveVideoSettings(updatedEntity)
-                        },
-                        onBackToHome = {
-                            activity?.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
-                            currentVideo = null
-                            currentVideoEntity = null
-                            currentPlaybackPositionMs = 0L
-                            currentScreen = AppScreen.HOME
-                        },
-                        onChangeVideoSource = {
-                            showSourceDialog = true
-                        },
-                        onOpenSettings = {
-                            previousScreen = AppScreen.PLAYER
-                            currentScreen = AppScreen.SETTINGS
-                        },
-                        onAudioEngineChange = { newEngine ->
-                            viewModel.setAudioEngine(newEngine)
-                        },
-                        modifier = Modifier.fillMaxSize()
-                    )
+                    // Pantalla de Reproducción activa (Edge-to-Edge nativa completa con clave única de URI)
+                    key(activeVideo.uri.toString()) {
+                        VideoPlayerScreen(
+                            videoItem = activeVideo,
+                            initialVideoEntity = currentVideoEntity,
+                            currentAudioEngine = selectedAudioEngine,
+                            initialPositionMs = currentPlaybackPositionMs,
+                            onPositionChanged = { newPos ->
+                                currentPlaybackPositionMs = newPos
+                            },
+                            onPlaybackProgress = { posMs, durMs ->
+                                viewModel.updatePlaybackProgress(
+                                    activeVideo.uri.toString(),
+                                    posMs,
+                                    durMs,
+                                    currentVideoEntity?.id ?: 0L
+                                )
+                            },
+                            onSaveVideoSettings = { updatedEntity ->
+                                currentVideoEntity = updatedEntity
+                                viewModel.saveVideoSettings(updatedEntity)
+                            },
+                            onBackToHome = {
+                                activity?.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+                                currentVideo = null
+                                currentVideoEntity = null
+                                currentPlaybackPositionMs = 0L
+                                currentScreen = AppScreen.HOME
+                            },
+                            onChangeVideoSource = {
+                                showSourceDialog = true
+                            },
+                            onOpenSettings = {
+                                previousScreen = AppScreen.PLAYER
+                                currentScreen = AppScreen.SETTINGS
+                            },
+                            onAudioEngineChange = { newEngine ->
+                                viewModel.setAudioEngine(newEngine)
+                            },
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    }
                 } else {
                     currentScreen = AppScreen.HOME
                 }

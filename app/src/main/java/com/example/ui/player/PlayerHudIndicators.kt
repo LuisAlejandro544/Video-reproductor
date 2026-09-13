@@ -352,3 +352,58 @@ fun PlayerErrorOverlay(
         }
     }
 }
+
+/**
+ * Banner flotante para notificar de forma clara e intuitiva cambios críticos en el estado del audio:
+ * - "Sin sonido" cuando el volumen baja a 0 o se silencia.
+ * - "Sonido restablecido" cuando el volumen vuelve a subir.
+ */
+@Composable
+fun SoundStatusHudBanner(
+    isMuted: Boolean,
+    title: String,
+    subtitle: String,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        shape = RoundedCornerShape(20.dp),
+        color = Color(0xFF0B1120).copy(alpha = 0.92f),
+        border = BorderStroke(
+            1.dp,
+            if (isMuted) Color(0xFFEF4444).copy(alpha = 0.65f) else Color(0xFF38BDF8).copy(alpha = 0.65f)
+        ),
+        shadowElevation = 10.dp,
+        modifier = modifier.testTag("sound_status_hud_banner")
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 18.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Icon(
+                imageVector = if (isMuted) Icons.Default.VolumeMute else Icons.Default.VolumeUp,
+                contentDescription = title,
+                tint = if (isMuted) Color(0xFFF87171) else Color(0xFF38BDF8),
+                modifier = Modifier.size(24.dp)
+            )
+            Column {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleSmall.copy(
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White,
+                        fontSize = 13.sp
+                    )
+                )
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.bodySmall.copy(
+                        color = Color(0xFF94A3B8),
+                        fontSize = 11.sp
+                    )
+                )
+            }
+        }
+    }
+}
+

@@ -4,6 +4,7 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import androidx.room.Update
 import kotlinx.coroutines.flow.Flow
 
 /**
@@ -21,6 +22,12 @@ interface VideoDao {
     fun getAllVideos(): Flow<List<VideoEntity>>
 
     /**
+     * Busca un video por su ID primario para obtener sus configuraciones actuales exactas.
+     */
+    @Query("SELECT * FROM video_history WHERE id = :id LIMIT 1")
+    suspend fun findById(id: Long): VideoEntity?
+
+    /**
      * Busca un video por su URI para verificar si ya fue importado previamente.
      */
     @Query("SELECT * FROM video_history WHERE uriString = :uriString LIMIT 1")
@@ -33,6 +40,18 @@ interface VideoDao {
     suspend fun insertOrUpdate(video: VideoEntity): Long
 
     /**
+     * Actualiza una entidad de video completa en la base de datos coincidiendo su PrimaryKey.
+     */
+    @Update
+    suspend fun update(video: VideoEntity)
+
+    /**
+     * Actualiza únicamente la marca de tiempo de última reproducción al abrir un video desde el historial.
+     */
+    @Query("UPDATE video_history SET lastPlayedTimestamp = :timestamp WHERE id = :id")
+    suspend fun updateLastPlayed(id: Long, timestamp: Long)
+
+    /**
      * Actualiza el progreso de reproducción y marca de tiempo de un video.
      */
     @Query("""
@@ -42,9 +61,10 @@ interface VideoDao {
             formattedDuration = CASE WHEN :formattedDuration != '' THEN :formattedDuration ELSE formattedDuration END,
             lastPlayedTimestamp = :timestamp,
             isCompleted = :isCompleted
-        WHERE uriString = :uriString
+        WHERE uriString = :uriString OR id = :id
     """)
     suspend fun updatePlaybackProgress(
+        id: Long = 0L,
         uriString: String,
         positionMs: Long,
         durationMs: Long,
@@ -90,10 +110,12 @@ interface VideoDao {
             eqFsrSharpness = :eqFsrSharpness,
             eqSunMode = :eqSunMode,
             eqAnime4kMode = :eqAnime4kMode,
-            eqAnime4kStrength = :eqAnime4kStrength
-        WHERE uriString = :uriString
+            eqAnime4kStrength = :eqAnime4kStrength,
+            hasCustomConfig = 1
+        WHERE id = :id OR uriString = :uriString
     """)
     suspend fun updateVideoSettings(
+        id: Long = 0L,
         uriString: String,
         playbackSpeed: Float,
         aspectRatioMode: String,

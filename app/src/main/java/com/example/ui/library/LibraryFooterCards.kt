@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Movie
-import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
@@ -28,9 +27,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 /**
- * LibraryFooterCards.kt - Secciones informativas al pie de la biblioteca.
+ * LibraryFooterCards.kt - Componentes de compatibilidad multimedia.
  *
- * Muestra formatos multimedia soportados nativamente y detalles de arquitecturas 32/64 bits.
+ * Muestra formatos multimedia soportados. La vista principal y detallada
+ * de compatibilidad ahora reside en FormatsSubScreen dentro del menú de Configuración.
  */
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -38,7 +38,8 @@ import androidx.compose.ui.unit.sp
 fun SupportedFormatsSection() {
     Card(
         shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B).copy(alpha = 0.6f)),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)),
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(
@@ -52,13 +53,13 @@ fun SupportedFormatsSection() {
                 Icon(
                     imageVector = Icons.Default.Movie,
                     contentDescription = null,
-                    tint = Color(0xFF38BDF8),
+                    tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.size(18.dp)
                 )
                 Text(
                     text = "Formatos soportados nativamente",
                     style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                    color = Color.White
+                    color = MaterialTheme.colorScheme.onSurface
                 )
             }
 
@@ -71,54 +72,16 @@ fun SupportedFormatsSection() {
                 formats.forEach { format ->
                     SuggestionChip(
                         onClick = {},
-                        label = { Text(format, style = MaterialTheme.typography.labelSmall.copy(color = Color.White)) },
+                        label = { Text(format, style = MaterialTheme.typography.labelSmall.copy(color = MaterialTheme.colorScheme.onSurface)) },
                         colors = SuggestionChipDefaults.suggestionChipColors(
-                            containerColor = Color(0xFF0F172A)
+                            containerColor = MaterialTheme.colorScheme.surface
                         ),
                         border = SuggestionChipDefaults.suggestionChipBorder(
                             enabled = true,
-                            borderColor = Color.White.copy(alpha = 0.15f)
+                            borderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.25f)
                         )
                     )
                 }
-            }
-        }
-    }
-}
-
-@Composable
-fun ArchitectureInfoCard() {
-    Card(
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B).copy(alpha = 0.35f)),
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Row(
-            modifier = Modifier.padding(14.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            Icon(
-                imageVector = Icons.Default.Speed,
-                contentDescription = null,
-                tint = Color(0xFF38BDF8),
-                modifier = Modifier.size(22.dp)
-            )
-            Column {
-                Text(
-                    text = "Arquitectura optimizada en 32 y 64 bits",
-                    style = MaterialTheme.typography.titleSmall.copy(
-                        fontWeight = FontWeight.SemiBold,
-                        color = Color.White
-                    )
-                )
-                Text(
-                    text = "Compilado para armeabi-v7a, arm64-v8a, x86 y x86_64 con aceleración nativa por hardware.",
-                    style = MaterialTheme.typography.bodySmall.copy(
-                        fontSize = 11.sp,
-                        color = Color.White.copy(alpha = 0.65f)
-                    )
-                )
             }
         }
     }

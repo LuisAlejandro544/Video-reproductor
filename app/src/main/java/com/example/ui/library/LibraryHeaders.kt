@@ -89,14 +89,14 @@ fun TopHeaderSection(
             onClick = onOpenAudioSettings,
             modifier = Modifier
                 .size(42.dp)
-                .background(Color(0xFF0F172A), CircleShape)
-                .border(1.dp, Color.White.copy(alpha = 0.15f), CircleShape)
+                .background(MaterialTheme.colorScheme.surfaceVariant, CircleShape)
+                .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f), CircleShape)
                 .testTag("home_settings_top_button")
         ) {
             Icon(
                 imageVector = Icons.Default.Settings,
                 contentDescription = "Configuración",
-                tint = Color(0xFF38BDF8),
+                tint = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.size(20.dp)
             )
         }
@@ -113,14 +113,14 @@ fun BrandHeroSection() {
         verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
         Text(
-            text = "Tu centro multimedia de alta fidelidad",
+            text = "Tus videos favoritos",
             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
             color = MaterialTheme.colorScheme.onBackground
         )
         Text(
-            text = "Audio de latencia ultrabaja en C++ con Google Oboe y reproducción fluida en cualquier formato.",
+            text = "Reproduce tus películas, grabaciones y series con la mejor calidad de imagen y sonido.",
             style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f)
+            color = MaterialTheme.colorScheme.onSurfaceVariant
         )
     }
 }

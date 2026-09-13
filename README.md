@@ -12,6 +12,12 @@
 
 ## ✨ Características Principales
 
+- **Personalización y Apariencia Material You (Modo Oscuro, Claro y del Sistema con Color Dinámico):**
+  - **Selector de Tema Completo:** Alternancia fluida entre **Modo Oscuro** (óptimo para salas de cine y ahorro de batería en pantallas OLED), **Modo Claro** (máxima visibilidad en exteriores bajo luz solar) y **Seguir al Sistema** (sincronizado automáticamente con las preferencias del sistema operativo).
+  - **Color Dinámico Material You (Android 12+ / API 31+):** Adaptación cromática armoniosa que extrae y aplica automáticamente los tonos primarios y secundarios del fondo de pantalla (*wallpaper*) del usuario mediante `dynamicDarkColorScheme` y `dynamicLightColorScheme`.
+  - **Interruptor de Control Manual:** Opción para activar o desactivar el color dinámico a voluntad, recurriendo a una cuidada paleta personalizada de alto contraste en caso de desactivarse o en dispositivos con versiones anteriores de Android.
+  - **Subpantalla Dedicada (`AppearanceSubScreen`):** Módulo exclusivo dentro del Centro de Configuración con tarjeta de previsualización en vivo en tiempo real de los colores activos y persistencia inmediata en disco (`AppPreferences`).
+  - **Aislamiento Tipográfico Permanente:** Mantiene fija la escala de texto en `fontScale = 1.0f` para prevenir desbordamientos o solapamientos visuales bajo cualquier combinación de tema.
 - **Herramienta de Canales de Audio en Tiempo Real (Estéreo / Mono / Pseudo-Estéreo Haas 3D):**
   - **Conversión Mono a Estéreo en Tiempo Real:** Corrige videos grabados con un solo micrófono o pista mono duplicando y enrutando la señal a ambos auriculares o altavoces.
   - **Modo Mono Centrado:** Mezcla balanceada `(L + R) / 2` para balancear pistas desequilibradas o escuchar con un único auricular.
@@ -160,6 +166,11 @@
   - Alternancia 100% real en caliente entre el motor C++ (Google Oboe con AAudio/OpenSL ES) y Android Media3 (AudioTrack).
   - **Prueba de Sonido Real:** Generador de tono senoidal estéreo PCM de 440 Hz integrado para audición física instantánea en el motor seleccionado.
   - **Telemetría Nativa en Tiempo Real:** Diagnóstico en vivo de arquitectura CPU (32/64 bits), backend nativo C++ activo, frecuencia de muestreo (Hz), canales de audio y tramas escritas en buffer.
+- **Detección Dinámica de Vulkan 1.1+ y Enlace Nativo C++ (Fase 6):**
+  - Módulo de verificación de hardware (`VulkanCapabilities`) que inspecciona `FEATURE_VULKAN_HARDWARE_VERSION` (>= 1.1 `0x401000`) y `FEATURE_VULKAN_HARDWARE_LEVEL` a nivel de sistema operativo.
+  - Consulta nativa directa al driver de la GPU en C++ vía JNI (`nativeQueryVulkanDriver`) mediante `vkEnumerateInstanceVersion` y `vkGetPhysicalDeviceProperties`.
+  - Enlace de la biblioteca nativa `libvulkan.so` en `CMakeLists.txt` con compatibilidad cruzada estricta para 32 bits (`armeabi-v7a`, `x86`) y 64 bits (`arm64-v8a`, `x86_64`).
+  - Tarjeta dedicada en `TelemetrySubScreen` que muestra en tiempo real la versión de API Vulkan, nivel de hardware, modelo de GPU física detectada y versión del controlador.
 
 ---
 
@@ -179,10 +190,11 @@
 
 | Capa | Tecnología | Propósito |
 | :--- | :--- | :--- |
-| **Interfaz de Usuario** | Kotlin + Jetpack Compose (Material 3) | UI moderna, fluida y adaptativa con tema oscuro inmersivo. |
+| **Interfaz de Usuario** | Kotlin + Jetpack Compose (Material 3 + Material You) | UI moderna y adaptativa con soporte de Material You (colores dinámicos en Android 12+) y selector de tema Oscuro, Claro y del Sistema. |
 | **Canal de Video** | AndroidX Media3 (ExoPlayer 1.5.1) | Decodificación por hardware de codecs universales (H.264, HEVC, AV1, VP9). |
 | **Motor de Audio Nativo** | C++17 + Google Oboe 1.9.3 | Procesamiento de audio de ultra baja latencia con AAudio y OpenSL ES. |
-| **Motor Gráfico y Postprocesado** | C++17 + OpenGL ES 2.0 / 3.0 (GLSL) | Pipeline de shaders en GPU para ecualizador de video en tiempo real (Zero-Copy OES). |
+| **Motor Gráfico Principal** | C++17 + OpenGL ES 2.0 / 3.0 (GLSL) | Pipeline de shaders en GPU para ecualizador de video en tiempo real (Zero-Copy OES). |
+| **Infraestructura Gráfica Avanzada** | C++17 + Vulkan 1.1+ (libvulkan.so NDK) | Detección de hardware y enlace nativo para renderizado adaptativo de baja sobrecarga de CPU (Fase 6). |
 | **Control de Velocidad** | Sonic Pitch Preservation (Media3) | Time-stretching hasta 2.0x manteniendo tonalidad y timbre acústico natural. |
 | **Subtítulos y Cues** | Media3 SubtitleView + SubRip/WebVTT | Renderizado de alta visibilidad, soporte de pistas internas e importación de externos (.srt/.vtt). |
 | **Control de Búfer RAM** | `PlayerLoadControlHelper` (ExoPlayer) | Asignación adaptativa de memoria anti-OOM con perfil específico para Android Go. |

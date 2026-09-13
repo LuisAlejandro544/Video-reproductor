@@ -65,7 +65,8 @@ class VideoRepository(private val videoDao: VideoDao) {
             eqFsrSharpness = existing?.eqFsrSharpness ?: 0.75f,
             eqSunMode = existing?.eqSunMode ?: 0.0f,
             eqAnime4kMode = existing?.eqAnime4kMode ?: 0,
-            eqAnime4kStrength = existing?.eqAnime4kStrength ?: 0.75f
+            eqAnime4kStrength = existing?.eqAnime4kStrength ?: 0.75f,
+            hasCustomConfig = existing?.hasCustomConfig ?: false
         )
         val generatedId = videoDao.insertOrUpdate(entity)
         entity.copy(id = if (entity.id == 0L) generatedId else entity.id)
@@ -73,31 +74,51 @@ class VideoRepository(private val videoDao: VideoDao) {
 
     /**
      * Actualiza y persiste el conjunto de configuraciones personalizadas de un video específico en Room.
+     * Marca explícitamente hasCustomConfig = true para aislar la configuración a este video únicamente.
      */
     suspend fun updateVideoSettings(videoEntity: VideoEntity) = withContext(Dispatchers.IO) {
+        val withFlag = videoEntity.copy(hasCustomConfig = true)
+        if (withFlag.id > 0L) {
+            videoDao.update(withFlag)
+        }
         videoDao.updateVideoSettings(
-            uriString = videoEntity.uriString,
-            playbackSpeed = videoEntity.playbackSpeed,
-            aspectRatioMode = videoEntity.aspectRatioMode,
-            audioEngine = videoEntity.audioEngine,
-            audioChannelMode = videoEntity.audioChannelMode,
-            subtitlesEnabled = videoEntity.subtitlesEnabled,
-            subtitleSize = videoEntity.subtitleSize,
-            externalSubtitleUri = videoEntity.externalSubtitleUri,
-            externalSubtitleName = videoEntity.externalSubtitleName,
-            eqBrightness = videoEntity.eqBrightness,
-            eqContrast = videoEntity.eqContrast,
-            eqSaturation = videoEntity.eqSaturation,
-            eqGamma = videoEntity.eqGamma,
-            eqSharpness = videoEntity.eqSharpness,
-            eqBlueLightFilter = videoEntity.eqBlueLightFilter,
-            eqPillarboxBlur = videoEntity.eqPillarboxBlur,
-            eqFsrEnabled = videoEntity.eqFsrEnabled,
-            eqFsrSharpness = videoEntity.eqFsrSharpness,
-            eqSunMode = videoEntity.eqSunMode,
-            eqAnime4kMode = videoEntity.eqAnime4kMode,
-            eqAnime4kStrength = videoEntity.eqAnime4kStrength
+            id = withFlag.id,
+            uriString = withFlag.uriString,
+            playbackSpeed = withFlag.playbackSpeed,
+            aspectRatioMode = withFlag.aspectRatioMode,
+            audioEngine = withFlag.audioEngine,
+            audioChannelMode = withFlag.audioChannelMode,
+            subtitlesEnabled = withFlag.subtitlesEnabled,
+            subtitleSize = withFlag.subtitleSize,
+            externalSubtitleUri = withFlag.externalSubtitleUri,
+            externalSubtitleName = withFlag.externalSubtitleName,
+            eqBrightness = withFlag.eqBrightness,
+            eqContrast = withFlag.eqContrast,
+            eqSaturation = withFlag.eqSaturation,
+            eqGamma = withFlag.eqGamma,
+            eqSharpness = withFlag.eqSharpness,
+            eqBlueLightFilter = withFlag.eqBlueLightFilter,
+            eqPillarboxBlur = withFlag.eqPillarboxBlur,
+            eqFsrEnabled = withFlag.eqFsrEnabled,
+            eqFsrSharpness = withFlag.eqFsrSharpness,
+            eqSunMode = withFlag.eqSunMode,
+            eqAnime4kMode = withFlag.eqAnime4kMode,
+            eqAnime4kStrength = withFlag.eqAnime4kStrength
         )
+    }
+
+    /**
+     * Obtiene la entidad persistida de un video por su ID primario.
+     */
+    suspend fun getVideoById(id: Long): VideoEntity? = withContext(Dispatchers.IO) {
+        videoDao.findById(id)
+    }
+
+    /**
+     * Actualiza únicamente la marca de tiempo de reproducción de un video.
+     */
+    suspend fun updateLastPlayed(id: Long) = withContext(Dispatchers.IO) {
+        videoDao.updateLastPlayed(id, System.currentTimeMillis())
     }
 
     /**
@@ -111,6 +132,7 @@ class VideoRepository(private val videoDao: VideoDao) {
      * Actualiza el progreso de reproducción de un video mientras se reproduce o al pausar.
      */
     suspend fun updatePlaybackProgress(
+        id: Long = 0L,
         uriString: String,
         positionMs: Long,
         durationMs: Long
@@ -118,6 +140,7 @@ class VideoRepository(private val videoDao: VideoDao) {
         val formattedDuration = if (durationMs > 0L) VideoUtils.formatDuration(durationMs) else ""
         val isCompleted = durationMs > 0L && positionMs >= (durationMs - 3000L) // Completado si restan menos de 3 seg
         videoDao.updatePlaybackProgress(
+            id = id,
             uriString = uriString,
             positionMs = positionMs,
             durationMs = durationMs,

@@ -23,13 +23,16 @@ import com.example.audio.AudioEngineType
 import com.example.audio.OboeAudioEngine
 import com.example.player.PlayerLoadControlHelper
 import com.example.ui.settings.AboutSubScreen
+import com.example.ui.settings.AppearanceSubScreen
 import com.example.ui.settings.AudioChannelsSubScreen
 import com.example.ui.settings.AudioEngineSubScreen
 import com.example.ui.settings.AudioTestManager
 import com.example.ui.settings.AudioTestSubScreen
+import com.example.ui.settings.FormatsSubScreen
 import com.example.ui.settings.SettingsHubView
 import com.example.ui.settings.SettingsSubScreen
 import com.example.ui.settings.TelemetrySubScreen
+import com.example.ui.theme.AppThemeMode
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -52,6 +55,10 @@ import kotlinx.coroutines.withContext
 fun SettingsScreen(
     currentEngine: AudioEngineType,
     onEngineChanged: (AudioEngineType) -> Unit,
+    currentThemeMode: AppThemeMode,
+    useDynamicColor: Boolean,
+    onThemeModeChanged: (AppThemeMode) -> Unit,
+    onDynamicColorChanged: (Boolean) -> Unit,
     onNavigateBack: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -114,11 +121,22 @@ fun SettingsScreen(
                     selectedEngine = selectedEngine,
                     currentChannelMode = currentChannelMode,
                     sampleRate = sampleRate,
+                    currentThemeMode = currentThemeMode,
+                    useDynamicColor = useDynamicColor,
                     onNavigateTo = { activeSubScreen = it },
                     onNavigateBack = {
                         AudioTestManager.stopTone(activeTestTrack)
                         onNavigateBack()
                     }
+                )
+            }
+            SettingsSubScreen.APPEARANCE -> {
+                AppearanceSubScreen(
+                    currentThemeMode = currentThemeMode,
+                    useDynamicColor = useDynamicColor,
+                    onThemeModeSelected = onThemeModeChanged,
+                    onDynamicColorToggled = onDynamicColorChanged,
+                    onBack = { activeSubScreen = SettingsSubScreen.HUB }
                 )
             }
             SettingsSubScreen.AUDIO_ENGINE -> {
@@ -193,6 +211,11 @@ fun SettingsScreen(
             }
             SettingsSubScreen.ABOUT -> {
                 AboutSubScreen(
+                    onBack = { activeSubScreen = SettingsSubScreen.HUB }
+                )
+            }
+            SettingsSubScreen.FORMATS -> {
+                FormatsSubScreen(
                     onBack = { activeSubScreen = SettingsSubScreen.HUB }
                 )
             }

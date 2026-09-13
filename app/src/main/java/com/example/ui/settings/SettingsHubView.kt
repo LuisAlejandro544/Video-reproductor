@@ -24,6 +24,8 @@ import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.Headphones
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Memory
+import androidx.compose.material.icons.filled.Movie
+import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -48,6 +50,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.audio.AudioChannelMode
 import com.example.audio.AudioEngineType
+import com.example.ui.theme.AppThemeMode
 
 /**
  * SettingsHubView.kt - Menú Principal de Navegación por Categorías (Hub)
@@ -62,6 +65,8 @@ fun SettingsHubView(
     selectedEngine: AudioEngineType,
     currentChannelMode: AudioChannelMode,
     sampleRate: Int,
+    currentThemeMode: AppThemeMode,
+    useDynamicColor: Boolean,
     onNavigateTo: (SettingsSubScreen) -> Unit,
     onNavigateBack: () -> Unit
 ) {
@@ -76,12 +81,12 @@ fun SettingsHubView(
                             text = "Configuración",
                             style = MaterialTheme.typography.titleLarge.copy(
                                 fontWeight = FontWeight.Bold,
-                                color = Color.White
+                                color = MaterialTheme.colorScheme.onSurface
                             )
                         )
                         Text(
                             text = "Ajustes y opciones del reproductor",
-                            style = MaterialTheme.typography.bodySmall.copy(color = Color(0xFF38BDF8))
+                            style = MaterialTheme.typography.bodySmall.copy(color = MaterialTheme.colorScheme.primary)
                         )
                     }
                 },
@@ -93,14 +98,14 @@ fun SettingsHubView(
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = "Volver",
-                            tint = Color.White
+                            tint = MaterialTheme.colorScheme.onSurface
                         )
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color(0xFF0F172A))
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface)
             )
         },
-        containerColor = Color(0xFF070B14)
+        containerColor = MaterialTheme.colorScheme.background
     ) { innerPadding ->
         Column(
             modifier = Modifier
@@ -111,10 +116,31 @@ fun SettingsHubView(
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             Text(
+                text = "PERSONALIZACIÓN Y APARIENCIA",
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                letterSpacing = 1.sp,
+                modifier = Modifier.padding(start = 4.dp, bottom = 2.dp)
+            )
+
+            SettingsNavigationCard(
+                icon = Icons.Default.Palette,
+                iconTint = Color(0xFFF59E0B),
+                title = "Apariencia y Material You",
+                subtitle = "Tema claro, oscuro o del sistema y color dinámico",
+                badge = "${currentThemeMode.displayName}${if (useDynamicColor) " (M.You)" else ""}",
+                testTag = "settings_item_appearance",
+                onClick = { onNavigateTo(SettingsSubScreen.APPEARANCE) }
+            )
+
+            Spacer(modifier = Modifier.height(6.dp))
+
+            Text(
                 text = "AUDIO Y REPRODUCCIÓN",
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Bold,
-                color = Color(0xFF94A3B8),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 letterSpacing = 1.sp,
                 modifier = Modifier.padding(start = 4.dp, bottom = 2.dp)
             )
@@ -153,13 +179,13 @@ fun SettingsHubView(
                 onClick = { onNavigateTo(SettingsSubScreen.AUDIO_TEST) }
             )
 
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(6.dp))
 
             Text(
                 text = "DIAGNÓSTICO Y SISTEMA",
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Bold,
-                color = Color(0xFF94A3B8),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 letterSpacing = 1.sp,
                 modifier = Modifier.padding(start = 4.dp, bottom = 2.dp)
             )
@@ -176,12 +202,22 @@ fun SettingsHubView(
 
             SettingsNavigationCard(
                 icon = Icons.Default.Info,
-                iconTint = Color(0xFFF59E0B),
+                iconTint = Color(0xFF3B82F6),
                 title = "Arquitectura y Distribución",
                 subtitle = "Compatibilidad 32/64 bits, Android Go y distribución APK",
                 badge = "APK / Uptodown",
                 testTag = "settings_item_about",
                 onClick = { onNavigateTo(SettingsSubScreen.ABOUT) }
+            )
+
+            SettingsNavigationCard(
+                icon = Icons.Default.Movie,
+                iconTint = Color(0xFF06B6D4),
+                title = "Formatos y Compatibilidad",
+                subtitle = "Contenedores de video, códecs de audio y subtítulos",
+                badge = "Universal",
+                testTag = "settings_item_formats",
+                onClick = { onNavigateTo(SettingsSubScreen.FORMATS) }
             )
         }
     }
@@ -203,8 +239,8 @@ fun SettingsNavigationCard(
 ) {
     Card(
         shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF0F172A)),
-        border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.08f)),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)),
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(16.dp))
@@ -246,7 +282,7 @@ fun SettingsNavigationCard(
                         text = title,
                         fontSize = 15.sp,
                         fontWeight = FontWeight.SemiBold,
-                        color = Color.White,
+                        color = MaterialTheme.colorScheme.onSurface,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f, fill = false)
@@ -273,7 +309,7 @@ fun SettingsNavigationCard(
                 Text(
                     text = subtitle,
                     fontSize = 12.sp,
-                    color = Color.White.copy(alpha = 0.65f),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     lineHeight = 16.sp,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
@@ -285,7 +321,7 @@ fun SettingsNavigationCard(
             Icon(
                 imageVector = Icons.AutoMirrored.Filled.ArrowForwardIos,
                 contentDescription = null,
-                tint = Color.White.copy(alpha = 0.35f),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
                 modifier = Modifier.size(14.dp)
             )
         }

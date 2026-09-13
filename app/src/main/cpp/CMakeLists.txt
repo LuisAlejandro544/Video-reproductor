@@ -37,6 +37,7 @@ add_library(
 # - log        : Sistema nativo de logs (android/log.h)
 # - GLESv2     : Biblioteca de sombreadores y GPU OpenGL ES 2.0 / 3.0
 # - EGL        : Interfaz nativa de contexto gráfico de Android
+# - vulkan     : API gráfica de bajo nivel Vulkan 1.1+ (Fase 6 del Roadmap)
 target_link_libraries(
     novaplayer_native
     PRIVATE
@@ -45,4 +46,5 @@ target_link_libraries(
     log
     GLESv2
     EGL
+    vulkan
 )

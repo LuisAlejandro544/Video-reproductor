@@ -37,9 +37,9 @@ Este documento detalla la organización de carpetas, responsabilidades de cada m
 │       ├── main/
 │       │   ├── AndroidManifest.xml   # Manifiesto de permisos y actividades
 │       │   │
-│       │   ├── cpp/                  # Capa Nativa C++ (Audio Oboe y OpenGL ES Shaders)
-│       │   │   ├── CMakeLists.txt    # Script de compilación CMake (enlaza Oboe, GLESv2, EGL, log)
-│       │   │   ├── native-lib.cpp    # Puntos de entrada JNI (puente hacia Kotlin con nativeFlush)
+│       │   ├── cpp/                  # Capa Nativa C++ (Audio Oboe, OpenGL ES y Vulkan 1.1+)
+│       │   │   ├── CMakeLists.txt    # Script de compilación CMake (enlaza Oboe, GLESv2, EGL, vulkan, log)
+│       │   │   ├── native-lib.cpp    # Puntos de entrada JNI (Oboe, VideoColorEngine y nativeQueryVulkanDriver)
 │       │   │   ├── OboeAudioEngine.h # Declaración de la clase del motor de audio Oboe (búfer circular estático, flush() y DSP)
 │       │   │   ├── OboeAudioEngine.cpp # Implementación nativa con búfer de anillo estático, vaciado atómico instantáneo y filtros DSP
 │       │   │   ├── VideoColorEngine.h # Declaración del motor de sombreadores OpenGL ES (incluye uniforms y texturas FBO)
@@ -60,6 +60,9 @@ Este documento detalla la organización de carpetas, responsabilidades de cada m
 │       │   │   │   ├── NativeVideoFilter.kt   # Puente JNI con VideoColorEngine en C++
 │       │   │   │   ├── VideoEqualizerState.kt # Modelo de parámetros de ecualización, modo sol, descanso visual, pillarbox blur, AMD FSR 1.0 y Anime4kMode
 │       │   │   │   └── OpenGLVideoSurface.kt  # GLSurfaceView.Renderer (doble paso con Pillarbox Blur, Modo Sol, AMD FSR 1.0 y Anime4K) y VideoPlayerView
+│       │   │   │
+│       │   │   ├── vulkan/           # Capa de capacidades e infraestructura Vulkan 1.1+ (Fase 6)
+│       │   │   │   └── VulkanCapabilities.kt  # Detección de FEATURE_VULKAN_HARDWARE_VERSION/LEVEL y puente JNI hacia el driver C++
 │       │   │   │
 │       │   │   ├── data/             # Persistencia local con Room (SQLite v2) y SharedPreferences
 │       │   │   │   ├── AppDatabase.kt         # Base de datos Room singleton con esquema v2
@@ -105,7 +108,7 @@ Este documento detalla la organización de carpetas, responsabilidades de cada m
 │       │   │   │   │   ├── ImportQuickCard.kt    # Tarjeta de importación rápida con selector SAF / Galería
 │       │   │   │   │   ├── LibraryDialogs.kt     # Diálogos de confirmación para eliminación individual o vaciado
 │       │   │   │   │   ├── LibraryFooterCards.kt # Tarjetas informativas de formatos compatibles y arquitectura
-│       │   │   │   │   ├── LibraryHeaders.kt     # Barra de título de la app e indicador de estado del motor de audio
+│       │   │   │   │   ├── LibraryHeaders.kt     # Barra superior con acceso a configuración y bienvenida accesible
 │       │   │   │   │   └── VideoHistoryCard.kt   # Tarjeta de elemento de video con progreso y acciones directas
 │       │   │   │   │
 │       │   │   │   ├── player/           # Módulos desacoplados del reproductor de video
@@ -115,18 +118,22 @@ Este documento detalla la organización de carpetas, responsabilidades de cada m
 │       │   │   │   │   └── PlayerOverlayControls.kt # Barras superior e inferior y controles de reproducción centrales
 │       │   │   │   │
 │       │   │   │   ├── settings/         # Subpantallas independientes de ajustes (Hub-and-Spoke)
-│       │   │   │   │   ├── ArchitectureSubScreen.kt # Diagnóstico de arquitectura (ARM32/64, x86, Android Go)
-│       │   │   │   │   ├── AudioEngineSubScreen.kt  # Configuración detallada de motores (Oboe vs Media3) y test senoidal
-│       │   │   │   │   ├── AudioOutputSubScreen.kt  # Configuración de balance, canal mono/estéreo y efecto Haas 3D
-│       │   │   │   │   ├── SettingsMainHub.kt       # Menú principal con tarjetas categorizadas
-│       │   │   │   │   ├── SettingsModels.kt        # Enums y modelos de rutas de subpantallas de ajustes
-│       │   │   │   │   ├── StorageSubScreen.kt      # Gestión de historial persistente Room y limpieza de caché
-│       │   │   │   │   └── VideoSubScreen.kt        # Ajustes de aceleración GPU, OpenGL ES y renderizado
+│       │   │   │   │   ├── AboutSubScreen.kt        # Licencias permisivas, arquitectura 32/64 bits y distribución APK
+│       │   │   │   │   ├── AppearanceSubScreen.kt   # Pantalla exclusiva e independiente de Apariencia, selector de tema y Material You
+│       │   │   │   │   ├── AudioChannelsSubScreen.kt # Configuración de enrutamiento estéreo, mono centrado y efecto Haas 3D
+│       │   │   │   │   ├── AudioEngineSubScreen.kt  # Configuración detallada de motores (Oboe vs Media3)
+│       │   │   │   │   ├── AudioTestManager.kt      # Gestor de sintetizador senoidal de 440 Hz PCM
+│       │   │   │   │   ├── AudioTestSubScreen.kt     # Pantalla de prueba acústica de salida física
+│       │   │   │   │   ├── FormatsSubScreen.kt       # Pantalla de formatos multimedia y códecs soportados (video, audio, subtítulos)
+│       │   │   │   │   ├── SettingsHubView.kt       # Menú principal con tarjetas categorizadas (Hub)
+│       │   │   │   │   ├── SettingsSubScreen.kt     # Enums y rutas de subpantallas de ajustes
+│       │   │   │   │   └── TelemetrySubScreen.kt     # Diagnóstico en vivo de tramas C++, buffers y perfil de memoria
 │       │   │   │   │
-│       │   │   │   └── theme/            # Paleta de colores, tipografía y tema oscuro
-│       │   │   │       ├── Color.kt
-│       │   │   │       ├── Theme.kt         # Tema M3 con escala de fuente aislada fija (fontScale = 1.0f)
-│       │   │   │       └── Type.kt
+│       │   │   │   └── theme/            # Paleta de colores, tipografía, Material You y temas
+│       │   │   │       ├── AppThemeMode.kt          # Enum de modos de tema (SYSTEM, LIGHT, DARK)
+│       │   │   │       ├── Color.kt                 # Paleta de colores M3 (Light/Dark tokens de alto contraste)
+│       │   │   │       ├── Theme.kt                 # Tema M3 con Material You (dynamicColor), selector de tema y escala de fuente aislada fija (fontScale = 1.0f)
+│       │   │   │       └── Type.kt                  # Tipografía M3
 │       │   │   │
 │       │   │   └── utils/            # Utilidades auxiliares
 │       │   │       ├── SubtitleUtils.kt # Detección de formato MIME (SRT/VTT) y resolución de nombres
@@ -223,3 +230,5 @@ Este documento detalla la organización de carpetas, responsabilidades de cada m
     - **Biblioteca (`com.example.ui.library`):** Fragmentación de `VideoImportScreen.kt` en componentes reutilizables con responsabilidades claras: cabecera (`LibraryHeaders.kt`), tarjeta de importación rápida (`ImportQuickCard.kt`), tarjeta de historial de video con mini-progreso (`VideoHistoryCard.kt`), diálogos de borrado seguro (`LibraryDialogs.kt`) y tarjetas de pie (`LibraryFooterCards.kt`).
     - **Configuración (`com.example.ui.settings`):** Descomposición de `SettingsScreen.kt` en subpantallas modulares desacopladas que reducen la carga cognitiva y permiten extender ajustes de audio, video o almacenamiento sin alterar el coordinador.
     - **Reproductor (`com.example.ui.player`):** Descomposición de `VideoPlayerScreen.kt` en controladores especializados: gestos táctiles concurrentes (`PlayerGestureDetector.kt`), indicadores HUD no intrusivos (`PlayerHudIndicators.kt`), rotación reactiva por sensor de hardware (`PlayerOrientationHandler.kt`) y controles táctiles superpuestos en pantalla completa (`PlayerOverlayControls.kt`).
+14. **Personalización Material You y Sistema de Temas (`AppThemeMode`):** Soporte nativo para extracción de colores dinámicos del sistema en Android 12+ (`dynamicDarkColorScheme`, `dynamicLightColorScheme`), con conmutación en caliente entre Modo Oscuro, Claro y del Sistema, persistencia reactiva en `AppPreferences` y blindaje tipográfico estricto (`fontScale = 1.0f`).
+15. **Infraestructura y Detección de Capacidades Vulkan 1.1+ (Fase 6):** Implementación del módulo `VulkanCapabilities.kt` y puente JNI `nativeQueryVulkanDriver` en C++. Realiza una doble verificación en tiempo de ejecución: consulta `FEATURE_VULKAN_HARDWARE_VERSION` (requiriendo versión >= 1.1 `0x401000`) y `FEATURE_VULKAN_HARDWARE_LEVEL` a nivel de Android, y ejecuta una consulta nativa directa al loader de Vulkan y a la GPU física (`vkEnumerateInstanceVersion` y `vkGetPhysicalDeviceProperties`). Asimismo, `CMakeLists.txt` enlaza la biblioteca del sistema `libvulkan.so` en todas las arquitecturas soportadas (32 bits y 64 bits), preparando la base para la migración del pipeline gráfico a Vulkan con `VK_ANDROID_external_memory_android_hardware_buffer` manteniendo degradación elegante (*graceful fallback*) hacia OpenGL ES.

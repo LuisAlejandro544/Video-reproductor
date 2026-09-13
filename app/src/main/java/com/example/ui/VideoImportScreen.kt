@@ -35,15 +35,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.audio.AudioEngineType
 import com.example.data.VideoEntity
-import com.example.ui.library.ArchitectureInfoCard
-import com.example.ui.library.AudioEngineBanner
 import com.example.ui.library.BrandHeroSection
 import com.example.ui.library.ClearHistoryConfirmDialog
 import com.example.ui.library.DeleteVideoConfirmDialog
 import com.example.ui.library.EmptyImportedVideosCard
 import com.example.ui.library.ImportQuickCard
 import com.example.ui.library.RenameVideoDialog
-import com.example.ui.library.SupportedFormatsSection
 import com.example.ui.library.TopHeaderSection
 import com.example.ui.library.VideoHistoryCard
 
@@ -124,17 +121,9 @@ fun VideoImportScreen(
             )
         }
 
-        // Título y presentación
+        // Título y presentación amigable para el usuario
         item {
             BrandHeroSection()
-        }
-
-        // Banner interactivo del motor de audio
-        item {
-            AudioEngineBanner(
-                selectedAudioEngine = selectedAudioEngine,
-                onOpenAudioSettings = onOpenAudioSettings
-            )
         }
 
         // Opciones de importación rápida
@@ -243,15 +232,9 @@ fun VideoImportScreen(
             }
         }
 
-        // Formatos compatibles
+        // Espaciado final de navegación
         item {
-            SupportedFormatsSection()
-        }
-
-        // Información de arquitectura y rendimiento
-        item {
-            ArchitectureInfoCard()
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(28.dp))
         }
     }
 }

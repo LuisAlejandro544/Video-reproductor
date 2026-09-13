@@ -1,6 +1,10 @@
 package com.example.ui
 
 import android.app.Activity
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.ActivityInfo
 import android.media.AudioManager
 import android.net.Uri
@@ -86,7 +90,10 @@ import com.example.ui.player.MinimalistGestureIndicator
 import com.example.ui.player.PlayerErrorOverlay
 import com.example.ui.player.PlayerGestureSurface
 import com.example.ui.player.PlayerOrientationHandler
+import com.example.ui.player.SoundStatusHudBanner
 import com.example.ui.player.TopControlsBar
+import com.example.utils.VideoUtils
+import kotlin.math.roundToInt
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -122,11 +129,20 @@ fun VideoPlayerScreen(
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
 
-    // Estado local reactivo del motor de audio seleccionado (restaura del video o general)
-    var activeAudioEngine by remember(initialVideoEntity, currentAudioEngine) {
-        val restored = initialVideoEntity?.audioEngine?.let {
-            try { AudioEngineType.valueOf(it) } catch (_: Exception) { currentAudioEngine }
-        } ?: currentAudioEngine
+    // Determina si este video específico cuenta con configuraciones personalizadas previamente guardadas
+    val hasCustom = initialVideoEntity != null && (initialVideoEntity.hasCustomConfig || initialVideoEntity.hasCustomSettings())
+
+    var currentEntityState by remember(videoItem.uri) {
+        mutableStateOf(initialVideoEntity)
+    }
+
+    // Estado local reactivo del motor de audio: solo restaura si este video tenía configuración propia
+    var activeAudioEngine by remember(videoItem.uri, initialVideoEntity, currentAudioEngine) {
+        val restored = if (hasCustom && initialVideoEntity?.audioEngine != null) {
+            try { AudioEngineType.valueOf(initialVideoEntity.audioEngine) } catch (_: Exception) { currentAudioEngine }
+        } else {
+            currentAudioEngine
+        }
         mutableStateOf(restored)
     }
 
@@ -159,11 +175,13 @@ fun VideoPlayerScreen(
     // Sensor de rotación de pantalla mediante hardware
     PlayerOrientationHandler(context = context, activity = activity)
 
-    // Modo de aspecto: FIT (ajustar), ZOOM (rellenar pantalla completa), FILL (estirar)
-    var currentAspectMode by remember(initialVideoEntity) {
-        val restored = initialVideoEntity?.aspectRatioMode?.let {
-            try { AspectRatioMode.valueOf(it) } catch (_: Exception) { AspectRatioMode.FIT }
-        } ?: AspectRatioMode.FIT
+    // Modo de aspecto: FIT (por defecto para videos sin configuración), o el guardado individualmente
+    var currentAspectMode by remember(videoItem.uri, initialVideoEntity) {
+        val restored = if (hasCustom && initialVideoEntity?.aspectRatioMode != null) {
+            try { AspectRatioMode.valueOf(initialVideoEntity.aspectRatioMode) } catch (_: Exception) { AspectRatioMode.FIT }
+        } else {
+            AspectRatioMode.FIT
+        }
         mutableStateOf(restored)
     }
 
@@ -171,15 +189,25 @@ fun VideoPlayerScreen(
     var videoWidth by remember { mutableIntStateOf(1920) }
     var videoHeight by remember { mutableIntStateOf(1080) }
 
-    // Ecualizador de Video en Tiempo Real con Shaders OpenGL ES en C++
-    var equalizerState by remember(initialVideoEntity) {
-        mutableStateOf(initialVideoEntity?.toEqualizerState() ?: VideoEqualizerState.DEFAULT)
+    // Ecualizador de Video en Tiempo Real: neutro por defecto o individual guardado
+    var equalizerState by remember(videoItem.uri, initialVideoEntity) {
+        val restored = if (hasCustom && initialVideoEntity != null) {
+            initialVideoEntity.toEqualizerState()
+        } else {
+            VideoEqualizerState.DEFAULT
+        }
+        mutableStateOf(restored)
     }
     var showEqualizerSheet by remember { mutableStateOf(false) }
 
-    // Control de Velocidad de Reproducción con Sonic Pitch Preservation (hasta 2.0x)
-    var playbackSpeed by remember(initialVideoEntity) {
-        mutableFloatStateOf(initialVideoEntity?.playbackSpeed ?: 1.0f)
+    // Control de Velocidad de Reproducción: 1.0f por defecto o individual guardado
+    var playbackSpeed by remember(videoItem.uri, initialVideoEntity) {
+        val restored = if (hasCustom && initialVideoEntity != null) {
+            initialVideoEntity.playbackSpeed
+        } else {
+            1.0f
+        }
+        mutableFloatStateOf(restored)
     }
     var showSpeedSheet by remember { mutableStateOf(false) }
 
@@ -197,11 +225,13 @@ fun VideoPlayerScreen(
     var showAudioEngineSheet by remember { mutableStateOf(false) }
     var showStereoMonoSheet by remember { mutableStateOf(false) }
 
-    // Modo de canal de audio (Estéreo / Mono / Pseudo-Estéreo Haas)
-    var audioChannelMode by remember(initialVideoEntity) {
-        val restored = initialVideoEntity?.audioChannelMode?.let {
-            try { AudioChannelMode.valueOf(it) } catch (_: Exception) { OboeAudioEngine.currentChannelMode }
-        } ?: OboeAudioEngine.currentChannelMode
+    // Modo de canal de audio: STEREO estándar por defecto o individual guardado
+    var audioChannelMode by remember(videoItem.uri, initialVideoEntity) {
+        val restored = if (hasCustom && initialVideoEntity?.audioChannelMode != null) {
+            try { AudioChannelMode.valueOf(initialVideoEntity.audioChannelMode) } catch (_: Exception) { AudioChannelMode.STEREO }
+        } else {
+            AudioChannelMode.STEREO
+        }
         mutableStateOf(restored)
     }
 
@@ -243,6 +273,71 @@ fun VideoPlayerScreen(
         mutableIntStateOf(initialVol)
     }
 
+    // Estados para la notificación HUD de sonido ("Sin sonido" / "Sonido activado")
+    var soundBannerText by remember { mutableStateOf<String?>(null) }
+    var soundBannerSubtext by remember { mutableStateOf<String?>(null) }
+    var isSoundBannerMuted by remember { mutableStateOf(false) }
+    var soundBannerJob by remember { mutableStateOf<Job?>(null) }
+    var previousEffectiveZero by remember { mutableStateOf<Boolean?>(null) }
+
+    // Función para mostrar de forma limpia y animada la alerta flotante de volumen
+    val showSoundNotification = remember(coroutineScope) {
+        { isZero: Boolean, vol: Int, maxVol: Int ->
+            soundBannerJob?.cancel()
+            isSoundBannerMuted = isZero
+            if (isZero) {
+                soundBannerText = "Sin sonido"
+                soundBannerSubtext = "El volumen se ha silenciado por completo"
+            } else {
+                val percentage = if (maxVol > 0) ((vol.toFloat() / maxVol) * 100).roundToInt() else 100
+                soundBannerText = "Sonido activado"
+                soundBannerSubtext = "Volumen restablecido al $percentage%"
+            }
+            soundBannerJob = coroutineScope.launch {
+                delay(2300)
+                soundBannerText = null
+                soundBannerSubtext = null
+            }
+        }
+    }
+
+    // Detección reactiva de cambios en el volumen efectivo (cero vs no-cero)
+    val isEffectiveZero = isMuted || currentVolume == 0
+    LaunchedEffect(isEffectiveZero) {
+        val prev = previousEffectiveZero
+        if (prev != null && prev != isEffectiveZero) {
+            showSoundNotification(isEffectiveZero, currentVolume, maxVolume)
+        }
+        previousEffectiveZero = isEffectiveZero
+    }
+
+    // Receptor del sistema para capturar cambios por botones físicos de volumen del móvil
+    DisposableEffect(context, audioManager) {
+        val receiver = object : BroadcastReceiver() {
+            override fun onReceive(c: Context?, intent: Intent?) {
+                if (intent?.action == "android.media.VOLUME_CHANGED_ACTION") {
+                    val newVol = audioManager?.getStreamVolume(AudioManager.STREAM_MUSIC) ?: currentVolume
+                    if (newVol != currentVolume) {
+                        currentVolume = newVol
+                    }
+                }
+            }
+        }
+        val filter = IntentFilter("android.media.VOLUME_CHANGED_ACTION")
+        context.registerReceiver(receiver, filter)
+        onDispose {
+            try {
+                context.unregisterReceiver(receiver)
+            } catch (_: Throwable) {}
+        }
+    }
+
+    // Sincronizar modo de canal de audio en el procesador y motor Oboe
+    LaunchedEffect(audioChannelMode) {
+        oboeAudioProcessor.channelMode = audioChannelMode
+        OboeAudioEngine.setChannelMode(audioChannelMode)
+    }
+
     // Dimensiones de pantalla para calibrar la sensibilidad del gesto
     var containerWidth by remember { mutableIntStateOf(1) }
     var containerHeight by remember { mutableIntStateOf(1) }
@@ -262,13 +357,15 @@ fun VideoPlayerScreen(
 
     // Estado del Sistema de Subtítulos (SRT / WebVTT / SSA / ASS y pistas embebidas)
     var showSubtitlesSheet by remember { mutableStateOf(false) }
-    var subtitlesEnabled by remember(initialVideoEntity) {
-        mutableStateOf(initialVideoEntity?.subtitlesEnabled ?: true)
+    var subtitlesEnabled by remember(videoItem.uri, initialVideoEntity) {
+        mutableStateOf(if (hasCustom && initialVideoEntity != null) initialVideoEntity.subtitlesEnabled else true)
     }
-    var subtitleSize by remember(initialVideoEntity) {
-        val restored = initialVideoEntity?.subtitleSize?.let {
-            try { SubtitleSize.valueOf(it) } catch (_: Exception) { SubtitleSize.MEDIUM }
-        } ?: SubtitleSize.MEDIUM
+    var subtitleSize by remember(videoItem.uri, initialVideoEntity) {
+        val restored = if (hasCustom && initialVideoEntity?.subtitleSize != null) {
+            try { SubtitleSize.valueOf(initialVideoEntity.subtitleSize) } catch (_: Exception) { SubtitleSize.MEDIUM }
+        } else {
+            SubtitleSize.MEDIUM
+        }
         mutableStateOf(restored)
     }
     var externalSubtitle by remember { mutableStateOf<SubtitleTrackItem?>(null) }
@@ -278,32 +375,41 @@ fun VideoPlayerScreen(
 
     // Función central para persistir las configuraciones específicas de este video
     val saveSettings: () -> Unit = {
-        val baseEntity = initialVideoEntity
-        if (baseEntity != null) {
-            val updated = baseEntity.copy(
-                playbackSpeed = playbackSpeed,
-                aspectRatioMode = currentAspectMode.name,
-                audioEngine = activeAudioEngine.name,
-                audioChannelMode = audioChannelMode.name,
-                subtitlesEnabled = subtitlesEnabled,
-                subtitleSize = subtitleSize.name,
-                externalSubtitleUri = externalSubtitle?.uri?.toString(),
-                externalSubtitleName = externalSubtitle?.label,
-                eqBrightness = equalizerState.brightness,
-                eqContrast = equalizerState.contrast,
-                eqSaturation = equalizerState.saturation,
-                eqGamma = equalizerState.gamma,
-                eqSharpness = equalizerState.sharpness,
-                eqBlueLightFilter = equalizerState.blueLightFilter,
-                eqPillarboxBlur = equalizerState.pillarboxBlur,
-                eqFsrEnabled = equalizerState.fsrEnabled,
-                eqFsrSharpness = equalizerState.fsrSharpness,
-                eqSunMode = equalizerState.sunMode,
-                eqAnime4kMode = equalizerState.anime4kMode.id,
-                eqAnime4kStrength = equalizerState.anime4kStrength
-            )
-            onSaveVideoSettings?.invoke(updated)
-        }
+        val baseEntity = currentEntityState ?: initialVideoEntity ?: VideoEntity(
+            uriString = videoItem.uri.toString(),
+            name = videoItem.name,
+            sizeBytes = videoItem.size,
+            formattedSize = videoItem.formattedSize,
+            durationMs = totalDurationMs,
+            formattedDuration = VideoUtils.formatDuration(totalDurationMs),
+            lastPositionMs = currentPositionMs,
+            hasCustomConfig = true
+        )
+        val updated = baseEntity.copy(
+            playbackSpeed = playbackSpeed,
+            aspectRatioMode = currentAspectMode.name,
+            audioEngine = activeAudioEngine.name,
+            audioChannelMode = audioChannelMode.name,
+            subtitlesEnabled = subtitlesEnabled,
+            subtitleSize = subtitleSize.name,
+            externalSubtitleUri = externalSubtitle?.uri?.toString(),
+            externalSubtitleName = externalSubtitle?.label,
+            eqBrightness = equalizerState.brightness,
+            eqContrast = equalizerState.contrast,
+            eqSaturation = equalizerState.saturation,
+            eqGamma = equalizerState.gamma,
+            eqSharpness = equalizerState.sharpness,
+            eqBlueLightFilter = equalizerState.blueLightFilter,
+            eqPillarboxBlur = equalizerState.pillarboxBlur,
+            eqFsrEnabled = equalizerState.fsrEnabled,
+            eqFsrSharpness = equalizerState.fsrSharpness,
+            eqSunMode = equalizerState.sunMode,
+            eqAnime4kMode = equalizerState.anime4kMode.id,
+            eqAnime4kStrength = equalizerState.anime4kStrength,
+            hasCustomConfig = true
+        )
+        currentEntityState = updated
+        onSaveVideoSettings?.invoke(updated)
     }
 
     // Control de Carga de RAM Adaptativo para Android Go y terminales modestos
@@ -423,7 +529,12 @@ fun VideoPlayerScreen(
         }
 
         onDispose {
-            saveSettings()
+            if (hasCustom || currentEntityState?.hasCustomConfig == true || playbackSpeed != 1.0f ||
+                audioChannelMode != AudioChannelMode.STEREO || currentAspectMode != AspectRatioMode.FIT ||
+                equalizerState != VideoEqualizerState.DEFAULT || externalSubtitle != null
+            ) {
+                saveSettings()
+            }
             insetsController?.show(WindowInsetsCompat.Type.systemBars())
             window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
             val lp = window?.attributes
@@ -445,6 +556,8 @@ fun VideoPlayerScreen(
             }
             try {
                 OboeAudioEngine.stop()
+                OboeAudioEngine.setChannelMode(AudioChannelMode.STEREO)
+                OboeAudioEngine.setVolume(1.0f)
             } catch (e: Throwable) {
                 Log.e("VideoPlayerScreen", "Error deteniendo OboeAudioEngine: ${e.message}")
             }
@@ -820,6 +933,24 @@ fun VideoPlayerScreen(
                 .padding(top = 36.dp)
         ) {
             FastForward2xBadge()
+        }
+
+        // Banner flotante para aviso de volumen a 0 ("Sin sonido") o reactivado ("Sonido activado")
+        AnimatedVisibility(
+            visible = soundBannerText != null,
+            enter = fadeIn(tween(180)) + scaleIn(tween(180), initialScale = 0.88f),
+            exit = fadeOut(tween(250)),
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .padding(top = if (isFastForwarding2x) 86.dp else 40.dp)
+        ) {
+            soundBannerText?.let { title ->
+                SoundStatusHudBanner(
+                    isMuted = isSoundBannerMuted,
+                    title = title,
+                    subtitle = soundBannerSubtext ?: ""
+                )
+            }
         }
 
         // Indicador HUD para Doble Tap (+5s / -5s)

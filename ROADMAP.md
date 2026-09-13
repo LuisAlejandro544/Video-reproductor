@@ -12,7 +12,7 @@ Este documento detalla las fases de desarrollo planificadas para convertir a **N
 [✅] Fase 3: Pipeline de Renderizado con OpenGL ES y Ecualizador de Video
 [✅] Fase 4: Subtítulos SRT/VTT y Búfer de Memoria RAM Adaptativo (Android Go)
 [✅] Fase 5: Aceleración con Núcleo Rust, Subtítulos SSA/ASS y Persistencia por Video
-[⏳] Fase 6: Renderizado Gráfico Adaptativo Vulkan 1.1+
+[🔄] Fase 6: Renderizado Gráfico Adaptativo Vulkan 1.1+ (Detección y Enlace NDK completados)
 [⏳] Fase 7: Transmisión y Pantalla Compartida a TV (Casting / Mirroring)
 [⏳] Fase 8: Empaquetado y Distribución Externa (Uptodown / APK Autónomo)
 ```
@@ -148,16 +148,33 @@ Este documento detalla las fases de desarrollo planificadas para convertir a **N
     - **Subtítulo externo asignado** (`externalSubtitleUri`, `externalSubtitleName`).
     - **Ajustes completos del Ecualizador y Shaders OpenGL ES en C++:** Brillo, contraste, saturación, gamma, nitidez, filtro de luz azul, desenfoque de barras laterales (Pillarbox Blur), AMD FSR 1.0 (activación y nitidez RCAS), Modo Sol Extremo y perfiles Anime4K (modo y fuerza).
   - Reactividad instantánea: los ajustes se sincronizan en caliente al cerrar cada modal o salir de la pantalla de reproducción.
+- [x] **Personalización Visual Material You y Selector de Tema (Oscuro, Claro y del Sistema):**
+  - Integración profunda de **Material You** con extracción armónica de colores dinámicos desde el fondo de pantalla en Android 12+ (`dynamicDarkColorScheme` y `dynamicLightColorScheme`).
+  - Selector de tema de 3 modos configurables: **Modo Oscuro**, **Modo Claro** y **Seguir al Sistema** (`AppThemeMode`).
+  - Control de activación / desactivación manual de colores dinámicos con paleta M3 personalizada de respaldo de alto contraste.
+  - Subpantalla de navegación independiente `AppearanceSubScreen` en el menú de Configuración con tarjeta de previsualización en vivo.
+  - Persistencia reactiva inmediata mediante `AppPreferences` y `MainViewModel` (`StateFlow`).
+  - Blindaje estricto de la escala tipográfica fija (`fontScale = 1.0f`) previniendo solapamientos o desbordamientos en cualquier combinación visual.
 
 ---
 
-### ⏳ Fase 6: Renderizado Gráfico Adaptativo Vulkan 1.1+ y Optimizaciones
-- [ ] **Detección Dinámica de Capacidades de Hardware:** Consulta en tiempo de ejecución de `FEATURE_VULKAN_HARDWARE_VERSION` para detectar soporte de Vulkan 1.1+ (`0x401000`).
+### 🔄 Fase 6: Renderizado Gráfico Adaptativo Vulkan 1.1+ (En Progreso)
+- [x] **Detección Dinámica de Capacidades de Hardware:**
+  - Consulta en tiempo de ejecución de `FEATURE_VULKAN_HARDWARE_VERSION` (detección de versión >= 1.1 `0x401000`) y `FEATURE_VULKAN_HARDWARE_LEVEL` mediante `VulkanCapabilities.kt`.
+  - Doble verificación nativa en C++ a través de JNI (`nativeQueryVulkanDriver`): consulta dinámica de `vkEnumerateInstanceVersion`, creación de instancia temporal y extracción de propiedades del dispositivo físico (`vkGetPhysicalDeviceProperties`: nombre de GPU, versión del controlador y tipo de hardware).
+- [x] **Preparación del Entorno NDK y Enlace CMake:**
+  - Enlace de la biblioteca nativa `vulkan` en `app/src/main/cpp/CMakeLists.txt` con compatibilidad cruzada estricta para 32 bits (`armeabi-v7a`, `x86`) y 64 bits (`arm64-v8a`, `x86_64`).
+- [x] **Módulo de Diagnóstico Gráfico en Telemetría (`TelemetrySubScreen`):**
+  - Tarjeta interactiva en vivo con distintivo de compatibilidad (Vulkan 1.1+ Listo / Vulkan 1.0 Básico / Incompatible), versión de API, nivel de hardware, GPU detectada y versión del controlador.
 - [ ] **Arquitectura con Degradación Elegante (*Graceful Fallback*):**
   - Dispositivos con Vulkan 1.1+: Canal de renderizado nativo C++ con extensión `VK_ANDROID_external_memory_android_hardware_buffer` para menor sobrecarga de CPU y consumo de batería.
   - Dispositivos sin soporte o con versiones previas (Vulkan 1.0): Renderizado automático y transparente con el pipeline probado de OpenGL ES 2.0 / 3.0.
+- [ ] **Compilación de Shaders a SPIR-V (`glslc`):**
+  - Pipeline de compilación de sombreadores GLSL hacia bytecode binario SPIR-V para los efectos de color, nitidez y reconstrucción.
+- [ ] **Canal de Renderizado Nativo C++ (`VulkanVideoEngine`):**
+  - Implementación de `VkInstance`, `VkSurfaceKHR`, `VkSwapchainKHR`, colas de comandos y sincronización de tramas.
 - [ ] **Selector Inteligente en Pantalla de Configuración (`SettingsScreen`):**
-  - Opción interactiva para elegir entre motor Vulkan y OpenGL ES cuando el hardware lo soporte.
+  - Opción interactiva para alternar entre motor Vulkan y OpenGL ES cuando el hardware lo soporte.
   - Bloqueo visual con mensaje informativo si el procesador no cuenta con Vulkan 1.1+.
 - [ ] Perfiles automáticos de uso de memoria RAM (límite estricto de búferes en dispositivos de 1GB/2GB y Android Go).
 - [ ] Estrategia de reducción de resolución de texturas intermedias si la GPU reporta sobrecarga.
@@ -165,7 +182,7 @@ Este documento detalla las fases de desarrollo planificadas para convertir a **N
 
 ---
 
-### ⏳ Fase 6: Transmisión y Pantalla Compartida a TV (Casting / Mirroring con Fidelidad Total)
+### ⏳ Fase 7: Transmisión y Pantalla Compartida a TV (Casting / Mirroring con Fidelidad Total)
 - [ ] **Soporte de Pantallas Secundarias (`DisplayManager` / `Presentation`):**
   - Salida directa por cable USB-C a HDMI / DisplayPort (Modo Escritorio / Samsung DeX / Display externo): renderiza el pipeline completo de OpenGL ES y audio Oboe nativo con calibración idéntica a la pantalla del móvil.
 - [ ] **Protocolo de Pantalla Inalámbrica (Miracast / Wi-Fi Display):**
@@ -175,7 +192,7 @@ Este documento detalla las fases de desarrollo planificadas para convertir a **N
 
 ---
 
-### ⏳ Fase 7: Empaquetado y Distribución Libre
+### ⏳ Fase 8: Empaquetado y Distribución Libre
 - [x] **Pipeline de Integración Continua (CI/CD) con GitHub Actions (`build-debug.yml`):**
   - Descarga integral del repositorio y configuración automática de herramientas nativas (NDK r26d, CMake 3.22.1 y Rust stable con targets Android).
   - Compilación limpia forzada (**sin caché**) con flags `--no-build-cache` y `cache-disabled: true`.
