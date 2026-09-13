@@ -11,9 +11,10 @@ Este documento detalla las fases de desarrollo planificadas para convertir a **N
 [✅] Fase 2: Configuración Nativa C++, Google Oboe y Rust
 [✅] Fase 3: Pipeline de Renderizado con OpenGL ES y Ecualizador de Video
 [✅] Fase 4: Subtítulos SRT/VTT y Búfer de Memoria RAM Adaptativo (Android Go)
-[🔄] Fase 5: Aceleración con Núcleo Rust y Formatos Complejos (SSA/ASS)
+[✅] Fase 5: Aceleración con Núcleo Rust, Subtítulos SSA/ASS y Persistencia por Video
 [⏳] Fase 6: Renderizado Gráfico Adaptativo Vulkan 1.1+
-[⏳] Fase 7: Empaquetado y Distribución Externa (Uptodown / APK Autónomo)
+[⏳] Fase 7: Transmisión y Pantalla Compartida a TV (Casting / Mirroring)
+[⏳] Fase 8: Empaquetado y Distribución Externa (Uptodown / APK Autónomo)
 ```
 
 ---
@@ -40,6 +41,8 @@ Este documento detalla las fases de desarrollo planificadas para convertir a **N
 - [x] **Integración de Decodificadores FFmpeg Puros:** Integración de `media3-ffmpeg-decoder` (DTS, AC3, TrueHD, FLAC, Opus) sin wrappers obsoletos.
 - [x] `OboeAudioProcessor` conectado a Media3 para desviar tramas PCM hacia el motor nativo en C++.
 - [x] Selector dinámico en la interfaz para alternar entre **Oboe C++ (Baja Latencia)** y **Media3 (AudioTrack estándar)**.
+- [x] **Bloqueo Inteligente de Funciones DSP en Media3:** Candado visual en el menú lateral y modal `VoiceNightAudioSheet` con banner explicativo y botón de desbloqueo instantáneo con un solo toque hacia Google Oboe C++.
+- [x] **Aislamiento de Escala Tipográfica del Sistema:** Fijación de `fontScale = 1.0f` en el tema de Jetpack Compose para asegurar legibilidad y diagramación predecible independiente de las preferencias del sistema operativo.
 - [x] Transición del diálogo modal hacia una **Pantalla Independiente de Configuración (`SettingsScreen`)** con navegación desacoplada y conservación de estado de reproducción.
 - [x] Verificación de salida física al 100% mediante sintetizador senoidal de tono PCM integrado para Oboe y Media3.
 - [x] Telemetría nativa en tiempo real con monitoreo periódico JNI (tramas C++, backend AAudio/OpenSL ES, sample rate, canales y ABI).
@@ -119,15 +122,36 @@ Este documento detalla las fases de desarrollo planificadas para convertir a **N
 
 ---
 
-### 🔄 Fase 5: Aceleración con Núcleo Rust y Formatos Complejos (Próximo Hito)
-- [ ] Enlace bidireccional JNI / FFI entre Rust y la capa de aplicación.
-- [ ] Parser nativo de subtítulos con formateo avanzado (SSA/ASS y subtítulos vectoriales).
-- [ ] Extracción rápida de metadatos de archivos de video sin bloquear la interfaz.
-- [ ] Búfer circular en memoria para pre-carga de tramas multimedia.
+### ✅ Fase 5: Aceleración con Núcleo Rust, Subtítulos SSA/ASS y Persistencia por Video (Completada)
+- [x] **Enlace bidireccional JNI / FFI entre Rust y Android (`NovaRustCore`):**
+  - Módulo nativo compilado con `cargo ndk` para los 4 targets Android (`aarch64`, `armv7`, `x86_64`, `i686`).
+  - Carga segura y sin fallbacks falsos de `libnova_rust.so` mediante `System.loadLibrary`.
+- [x] **Parser nativo de subtítulos SSA/ASS de alto rendimiento en Rust:**
+  - Decodificación en Cero-Copia de encabezados `[Script Info]`, metadatos de resolución virtual `PlayResX` / `PlayResY`, estilos `[V4+ Styles]` y eventos `[Events]`.
+  - Normalización de colores hexadecimales BGR/ABGR de SSA hacia RGB/ARGB estándar.
+  - Parseo de etiquetas de tiempo `H:MM:SS.CC` a milisegundos absolutos y extracción limpia de texto eliminando secuencias de control complejas `{\tag}`.
+  - Serialización estructurada a JSON con `serde` / `serde_json` transmitida a través de JNI con deserialización rápida mediante `kotlinx.serialization`.
+- [x] **Componente de Renderizado Avanzado `AssSubtitleOverlay` (Jetpack Compose):**
+  - Renderizado dinámico sincronizado al milisegundo durante la reproducción del video.
+  - Posicionamiento virtual proporcional calibrado según `PlayResX` y `PlayResY`.
+  - Soporte de alineación posicional de 9 puntos estilo teclado numérico del estándar ASS (Bottom-Center, Top-Center, Middle, etc.).
+  - Doble paso de renderizado tipográfico con contorno (*stroke outline*) para contraste absoluto sobre cualquier escena.
+  - Respeto del tamaño dinámico configurado por el usuario (`SubtitleSize`).
+- [x] **Persistencia Completa de Configuraciones por Video (Room SQLite v2):**
+  - Migración y ampliación de la entidad `VideoEntity` a la versión 2 del esquema con migración destructiva controlada para desarrollo ágil.
+  - Almacenamiento y restauración automática e individualizada por video de:
+    - **Velocidad de reproducción** (`playbackSpeed`).
+    - **Relación de aspecto geométrico** (`aspectRatioMode`: Fit, Zoom, Fill).
+    - **Motor de audio seleccionado** (`audioEngine`: Media3 o Google Oboe C++).
+    - **Modo de canales de audio** (`audioChannelMode`: Estéreo, Mono o Pseudo-Estéreo Haas 3D).
+    - **Estado y tamaño de subtítulos** (`subtitlesEnabled`, `subtitleSize`).
+    - **Subtítulo externo asignado** (`externalSubtitleUri`, `externalSubtitleName`).
+    - **Ajustes completos del Ecualizador y Shaders OpenGL ES en C++:** Brillo, contraste, saturación, gamma, nitidez, filtro de luz azul, desenfoque de barras laterales (Pillarbox Blur), AMD FSR 1.0 (activación y nitidez RCAS), Modo Sol Extremo y perfiles Anime4K (modo y fuerza).
+  - Reactividad instantánea: los ajustes se sincronizan en caliente al cerrar cada modal o salir de la pantalla de reproducción.
 
 ---
 
-### ⏳ Fase 5: Renderizado Gráfico Adaptativo Vulkan 1.1+ y Optimizaciones
+### ⏳ Fase 6: Renderizado Gráfico Adaptativo Vulkan 1.1+ y Optimizaciones
 - [ ] **Detección Dinámica de Capacidades de Hardware:** Consulta en tiempo de ejecución de `FEATURE_VULKAN_HARDWARE_VERSION` para detectar soporte de Vulkan 1.1+ (`0x401000`).
 - [ ] **Arquitectura con Degradación Elegante (*Graceful Fallback*):**
   - Dispositivos con Vulkan 1.1+: Canal de renderizado nativo C++ con extensión `VK_ANDROID_external_memory_android_hardware_buffer` para menor sobrecarga de CPU y consumo de batería.

@@ -3,6 +3,7 @@ package com.example.ui
 import android.app.Activity
 import android.content.pm.ActivityInfo
 import android.media.AudioManager
+import android.net.Uri
 import android.util.Log
 import android.view.WindowManager
 import androidx.activity.compose.BackHandler
@@ -61,13 +62,16 @@ import androidx.media3.exoplayer.audio.AudioSink
 import androidx.media3.exoplayer.audio.DefaultAudioSink
 import androidx.media3.ui.CaptionStyleCompat
 import androidx.media3.ui.SubtitleView
+import com.example.audio.AudioChannelMode
 import com.example.audio.AudioEngineType
 import com.example.audio.OboeAudioEngine
 import com.example.audio.OboeAudioProcessor
+import com.example.data.VideoEntity
 import com.example.model.VideoItem
 import com.example.opengl.OpenGLVideoPlayerView
 import com.example.opengl.VideoEqualizerState
 import com.example.player.PlayerLoadControlHelper
+import com.example.subtitles.AssSubtitleOverlay
 import com.example.subtitles.SubtitleSize
 import com.example.subtitles.SubtitleTrackItem
 import com.example.subtitles.SubtitleUtils
@@ -103,10 +107,12 @@ import kotlinx.coroutines.launch
 @Composable
 fun VideoPlayerScreen(
     videoItem: VideoItem,
+    initialVideoEntity: VideoEntity? = null,
     currentAudioEngine: AudioEngineType = AudioEngineType.MEDIA3,
     initialPositionMs: Long = 0L,
     onPositionChanged: (Long) -> Unit = {},
     onPlaybackProgress: ((positionMs: Long, durationMs: Long) -> Unit)? = null,
+    onSaveVideoSettings: ((VideoEntity) -> Unit)? = null,
     onBackToHome: () -> Unit,
     onChangeVideoSource: () -> Unit,
     onOpenSettings: () -> Unit,
@@ -116,8 +122,13 @@ fun VideoPlayerScreen(
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
 
-    // Estado local reactivo del motor de audio seleccionado
-    var activeAudioEngine by remember(currentAudioEngine) { mutableStateOf(currentAudioEngine) }
+    // Estado local reactivo del motor de audio seleccionado (restaura del video o general)
+    var activeAudioEngine by remember(initialVideoEntity, currentAudioEngine) {
+        val restored = initialVideoEntity?.audioEngine?.let {
+            try { AudioEngineType.valueOf(it) } catch (_: Exception) { currentAudioEngine }
+        } ?: currentAudioEngine
+        mutableStateOf(restored)
+    }
 
     // Procesador de audio que desvía tramas PCM hacia Google Oboe C++ o hacia AudioTrack
     val oboeAudioProcessor = remember {
@@ -145,28 +156,31 @@ fun VideoPlayerScreen(
     val activity = context as? Activity
     val view = LocalView.current
 
-    // Manejador del botón atrás físico o por gestos del sistema
-    BackHandler {
-        activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
-        onBackToHome()
-    }
-
     // Sensor de rotación de pantalla mediante hardware
     PlayerOrientationHandler(context = context, activity = activity)
 
     // Modo de aspecto: FIT (ajustar), ZOOM (rellenar pantalla completa), FILL (estirar)
-    var currentAspectMode by remember { mutableStateOf(AspectRatioMode.FIT) }
+    var currentAspectMode by remember(initialVideoEntity) {
+        val restored = initialVideoEntity?.aspectRatioMode?.let {
+            try { AspectRatioMode.valueOf(it) } catch (_: Exception) { AspectRatioMode.FIT }
+        } ?: AspectRatioMode.FIT
+        mutableStateOf(restored)
+    }
 
     // Dimensiones nativas de video para cálculo geométrico y kernel de nitidez
     var videoWidth by remember { mutableIntStateOf(1920) }
     var videoHeight by remember { mutableIntStateOf(1080) }
 
     // Ecualizador de Video en Tiempo Real con Shaders OpenGL ES en C++
-    var equalizerState by remember { mutableStateOf(VideoEqualizerState.DEFAULT) }
+    var equalizerState by remember(initialVideoEntity) {
+        mutableStateOf(initialVideoEntity?.toEqualizerState() ?: VideoEqualizerState.DEFAULT)
+    }
     var showEqualizerSheet by remember { mutableStateOf(false) }
 
     // Control de Velocidad de Reproducción con Sonic Pitch Preservation (hasta 2.0x)
-    var playbackSpeed by remember { mutableFloatStateOf(1.0f) }
+    var playbackSpeed by remember(initialVideoEntity) {
+        mutableFloatStateOf(initialVideoEntity?.playbackSpeed ?: 1.0f)
+    }
     var showSpeedSheet by remember { mutableStateOf(false) }
 
     // Panel lateral de herramientas y estado de bloqueo de controles
@@ -184,7 +198,12 @@ fun VideoPlayerScreen(
     var showStereoMonoSheet by remember { mutableStateOf(false) }
 
     // Modo de canal de audio (Estéreo / Mono / Pseudo-Estéreo Haas)
-    var audioChannelMode by remember { mutableStateOf(OboeAudioEngine.currentChannelMode) }
+    var audioChannelMode by remember(initialVideoEntity) {
+        val restored = initialVideoEntity?.audioChannelMode?.let {
+            try { AudioChannelMode.valueOf(it) } catch (_: Exception) { OboeAudioEngine.currentChannelMode }
+        } ?: OboeAudioEngine.currentChannelMode
+        mutableStateOf(restored)
+    }
 
     // Interacción del usuario arrastrando la barra de progreso
     var isDraggingSlider by remember { mutableStateOf(false) }
@@ -241,14 +260,51 @@ fun VideoPlayerScreen(
     var doubleTapSeekSide by remember { mutableStateOf<DoubleTapSeekSide?>(null) }
     var doubleTapHideJob by remember { mutableStateOf<Job?>(null) }
 
-    // Estado del Sistema de Subtítulos (SRT / WebVTT y pistas embebidas)
+    // Estado del Sistema de Subtítulos (SRT / WebVTT / SSA / ASS y pistas embebidas)
     var showSubtitlesSheet by remember { mutableStateOf(false) }
-    var subtitlesEnabled by remember { mutableStateOf(true) }
-    var subtitleSize by remember { mutableStateOf(SubtitleSize.MEDIUM) }
+    var subtitlesEnabled by remember(initialVideoEntity) {
+        mutableStateOf(initialVideoEntity?.subtitlesEnabled ?: true)
+    }
+    var subtitleSize by remember(initialVideoEntity) {
+        val restored = initialVideoEntity?.subtitleSize?.let {
+            try { SubtitleSize.valueOf(it) } catch (_: Exception) { SubtitleSize.MEDIUM }
+        } ?: SubtitleSize.MEDIUM
+        mutableStateOf(restored)
+    }
     var externalSubtitle by remember { mutableStateOf<SubtitleTrackItem?>(null) }
     var availableTracks by remember { mutableStateOf<List<SubtitleTrackItem>>(emptyList()) }
     var selectedTrackId by remember { mutableStateOf<String?>(null) }
     var currentCues by remember { mutableStateOf<List<Cue>>(emptyList()) }
+
+    // Función central para persistir las configuraciones específicas de este video
+    val saveSettings: () -> Unit = {
+        val baseEntity = initialVideoEntity
+        if (baseEntity != null) {
+            val updated = baseEntity.copy(
+                playbackSpeed = playbackSpeed,
+                aspectRatioMode = currentAspectMode.name,
+                audioEngine = activeAudioEngine.name,
+                audioChannelMode = audioChannelMode.name,
+                subtitlesEnabled = subtitlesEnabled,
+                subtitleSize = subtitleSize.name,
+                externalSubtitleUri = externalSubtitle?.uri?.toString(),
+                externalSubtitleName = externalSubtitle?.label,
+                eqBrightness = equalizerState.brightness,
+                eqContrast = equalizerState.contrast,
+                eqSaturation = equalizerState.saturation,
+                eqGamma = equalizerState.gamma,
+                eqSharpness = equalizerState.sharpness,
+                eqBlueLightFilter = equalizerState.blueLightFilter,
+                eqPillarboxBlur = equalizerState.pillarboxBlur,
+                eqFsrEnabled = equalizerState.fsrEnabled,
+                eqFsrSharpness = equalizerState.fsrSharpness,
+                eqSunMode = equalizerState.sunMode,
+                eqAnime4kMode = equalizerState.anime4kMode.id,
+                eqAnime4kStrength = equalizerState.anime4kStrength
+            )
+            onSaveVideoSettings?.invoke(updated)
+        }
+    }
 
     // Control de Carga de RAM Adaptativo para Android Go y terminales modestos
     val adaptiveLoadControl = remember {
@@ -297,11 +353,60 @@ fun VideoPlayerScreen(
                 if (initialPositionMs > 0L) {
                     seekTo(initialPositionMs)
                 }
+                if (playbackSpeed != 1.0f) {
+                    playbackParameters = PlaybackParameters(playbackSpeed, 1.0f)
+                }
                 prepare()
                 playWhenReady = true
             } catch (e: Throwable) {
                 Log.e("VideoPlayerScreen", "Error preparando ExoPlayer: ${e.message}", e)
                 playbackErrorMessage = e.localizedMessage ?: "Error al preparar el video"
+            }
+        }
+    }
+
+    // Restaurar subtítulo externo persistido si existía guardado para este video
+    LaunchedEffect(initialVideoEntity?.externalSubtitleUri) {
+        val subUriStr = initialVideoEntity?.externalSubtitleUri
+        if (!subUriStr.isNullOrBlank() && externalSubtitle == null) {
+            try {
+                val subUri = Uri.parse(subUriStr)
+                val fileName = initialVideoEntity.externalSubtitleName ?: SubtitleUtils.resolveSubtitleFileName(context, subUri)
+                val mimeType = SubtitleUtils.detectSubtitleMimeType(fileName)
+                val fullAss = SubtitleUtils.loadFullAssTrackIfApplicable(context, subUri, fileName)
+                val track = SubtitleTrackItem(
+                    id = "ext_persisted_${System.currentTimeMillis()}",
+                    label = fileName,
+                    mimeType = mimeType,
+                    isExternal = true,
+                    uri = subUri,
+                    assInfo = fullAss?.summary ?: SubtitleUtils.inspectAssMetadataIfApplicable(context, subUri, fileName),
+                    assStyles = fullAss?.styles ?: emptyList(),
+                    assDialogues = fullAss?.dialogues ?: emptyList()
+                )
+                externalSubtitle = track
+                selectedTrackId = track.id
+
+                val subtitleConfig = MediaItem.SubtitleConfiguration.Builder(subUri)
+                    .setMimeType(mimeType)
+                    .setLanguage("und")
+                    .setLabel(fileName)
+                    .setSelectionFlags(C.SELECTION_FLAG_DEFAULT)
+                    .build()
+
+                val currentMediaItem = exoPlayer.currentMediaItem
+                if (currentMediaItem != null) {
+                    val currentPos = exoPlayer.currentPosition
+                    val wasPlaying = exoPlayer.playWhenReady
+                    val updatedItem = currentMediaItem.buildUpon()
+                        .setSubtitleConfigurations(listOf(subtitleConfig))
+                        .build()
+                    exoPlayer.setMediaItem(updatedItem, currentPos)
+                    exoPlayer.prepare()
+                    exoPlayer.playWhenReady = wasPlaying
+                }
+            } catch (e: Throwable) {
+                Log.w("VideoPlayerScreen", "No se pudo restaurar subtítulo externo persistido: ${e.message}")
             }
         }
     }
@@ -318,6 +423,7 @@ fun VideoPlayerScreen(
         }
 
         onDispose {
+            saveSettings()
             insetsController?.show(WindowInsetsCompat.Type.systemBars())
             window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
             val lp = window?.attributes
@@ -512,20 +618,24 @@ fun VideoPlayerScreen(
     // Manejar botón Atrás del sistema de forma jerárquica
     BackHandler {
         when {
-            showToolsSideSheet -> showToolsSideSheet = false
-            showEqualizerSheet -> showEqualizerSheet = false
-            showPillarboxSheet -> showPillarboxSheet = false
-            showFsrSheet -> showFsrSheet = false
-            showAnime4kSheet -> showAnime4kSheet = false
-            showSunModeSheet -> showSunModeSheet = false
-            showVoiceNightSheet -> showVoiceNightSheet = false
-            showSpeedSheet -> showSpeedSheet = false
-            showSubtitlesSheet -> showSubtitlesSheet = false
-            showAspectRatioSheet -> showAspectRatioSheet = false
-            showAudioEngineSheet -> showAudioEngineSheet = false
-            showStereoMonoSheet -> showStereoMonoSheet = false
+            showToolsSideSheet -> { showToolsSideSheet = false; saveSettings() }
+            showEqualizerSheet -> { showEqualizerSheet = false; saveSettings() }
+            showPillarboxSheet -> { showPillarboxSheet = false; saveSettings() }
+            showFsrSheet -> { showFsrSheet = false; saveSettings() }
+            showAnime4kSheet -> { showAnime4kSheet = false; saveSettings() }
+            showSunModeSheet -> { showSunModeSheet = false; saveSettings() }
+            showVoiceNightSheet -> { showVoiceNightSheet = false; saveSettings() }
+            showSpeedSheet -> { showSpeedSheet = false; saveSettings() }
+            showSubtitlesSheet -> { showSubtitlesSheet = false; saveSettings() }
+            showAspectRatioSheet -> { showAspectRatioSheet = false; saveSettings() }
+            showAudioEngineSheet -> { showAudioEngineSheet = false; saveSettings() }
+            showStereoMonoSheet -> { showStereoMonoSheet = false; saveSettings() }
             isControlsLocked -> isControlsLocked = false
-            else -> onBackToHome()
+            else -> {
+                saveSettings()
+                activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+                onBackToHome()
+            }
         }
     }
 
@@ -548,8 +658,18 @@ fun VideoPlayerScreen(
             modifier = Modifier.fillMaxSize()
         )
 
-        // Capa de Subtítulos de Alto Contraste (SRT / WebVTT y pistas embebidas)
-        if (subtitlesEnabled && currentCues.isNotEmpty()) {
+        // Capa de Subtítulos Complejos SSA/ASS (Procesados por Rust Core nativo)
+        if (subtitlesEnabled && externalSubtitle?.assDialogues?.isNotEmpty() == true) {
+            AssSubtitleOverlay(
+                dialogues = externalSubtitle!!.assDialogues,
+                styles = externalSubtitle!!.assStyles,
+                currentPositionMs = currentPositionMs,
+                subtitleSize = subtitleSize,
+                showControls = showControls,
+                modifier = Modifier.fillMaxSize()
+            )
+        } else if (subtitlesEnabled && currentCues.isNotEmpty()) {
+            // Capa de Subtítulos estándar (SRT / WebVTT y pistas embebidas)
             AndroidView(
                 factory = { ctx ->
                     SubtitleView(ctx).apply {
@@ -749,17 +869,26 @@ fun VideoPlayerScreen(
                     aspectModeLabel = currentAspectMode.label,
                     selectedAudioEngine = activeAudioEngine,
                     isPortrait = isPortrait,
-                    onBack = onBackToHome,
-                    onChangeSource = onChangeVideoSource,
+                    onBack = {
+                        saveSettings()
+                        activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+                        onBackToHome()
+                    },
+                    onChangeSource = {
+                        saveSettings()
+                        onChangeVideoSource()
+                    },
                     onToggleAspectMode = {
                         currentAspectMode = when (currentAspectMode) {
                             AspectRatioMode.FIT -> AspectRatioMode.ZOOM
                             AspectRatioMode.ZOOM -> AspectRatioMode.FILL
                             AspectRatioMode.FILL -> AspectRatioMode.FIT
                         }
+                        saveSettings()
                         lastInteractionTime = System.currentTimeMillis()
                     },
                     onOpenSettings = {
+                        saveSettings()
                         onPositionChanged(exoPlayer.currentPosition)
                         onOpenSettings()
                     },
@@ -869,6 +998,7 @@ fun VideoPlayerScreen(
         // Panel Lateral de Herramientas
         PlayerToolsSideSheet(
             visible = showToolsSideSheet,
+            currentAudioEngine = activeAudioEngine,
             onDismiss = { showToolsSideSheet = false },
             onSelectTool = { tool ->
                 when (tool) {
@@ -899,54 +1029,98 @@ fun VideoPlayerScreen(
                     audioChannelMode = mode
                     oboeAudioProcessor.channelMode = mode
                     OboeAudioEngine.setChannelMode(mode)
+                    saveSettings()
                 },
-                onDismiss = { showStereoMonoSheet = false }
+                onDismiss = {
+                    showStereoMonoSheet = false
+                    saveSettings()
+                }
             )
         }
 
         if (showEqualizerSheet) {
             VideoEqualizerSheet(
                 state = equalizerState,
-                onStateChange = { equalizerState = it },
-                onDismiss = { showEqualizerSheet = false }
+                onStateChange = {
+                    equalizerState = it
+                    saveSettings()
+                },
+                onDismiss = {
+                    showEqualizerSheet = false
+                    saveSettings()
+                }
             )
         }
 
         if (showSunModeSheet) {
             SunModeSheet(
                 state = equalizerState,
-                onStateChange = { equalizerState = it },
-                onDismiss = { showSunModeSheet = false }
+                onStateChange = {
+                    equalizerState = it
+                    saveSettings()
+                },
+                onDismiss = {
+                    showSunModeSheet = false
+                    saveSettings()
+                }
             )
         }
 
         if (showPillarboxSheet) {
             PillarboxBlurSheet(
                 state = equalizerState,
-                onStateChange = { equalizerState = it },
-                onDismiss = { showPillarboxSheet = false }
+                onStateChange = {
+                    equalizerState = it
+                    saveSettings()
+                },
+                onDismiss = {
+                    showPillarboxSheet = false
+                    saveSettings()
+                }
             )
         }
 
         if (showFsrSheet) {
             FsrUpscaleSheet(
                 state = equalizerState,
-                onStateChange = { equalizerState = it },
-                onDismiss = { showFsrSheet = false }
+                onStateChange = {
+                    equalizerState = it
+                    saveSettings()
+                },
+                onDismiss = {
+                    showFsrSheet = false
+                    saveSettings()
+                }
             )
         }
 
         if (showAnime4kSheet) {
             Anime4KSheet(
                 state = equalizerState,
-                onStateChange = { equalizerState = it },
-                onDismiss = { showAnime4kSheet = false }
+                onStateChange = {
+                    equalizerState = it
+                    saveSettings()
+                },
+                onDismiss = {
+                    showAnime4kSheet = false
+                    saveSettings()
+                }
             )
         }
 
         if (showVoiceNightSheet) {
             VoiceNightAudioSheet(
-                onDismiss = { showVoiceNightSheet = false }
+                currentAudioEngine = activeAudioEngine,
+                onSwitchToOboe = {
+                    activeAudioEngine = AudioEngineType.OBOE
+                    oboeAudioProcessor.currentEngine = AudioEngineType.OBOE
+                    onAudioEngineChange?.invoke(AudioEngineType.OBOE)
+                    saveSettings()
+                },
+                onDismiss = {
+                    showVoiceNightSheet = false
+                    saveSettings()
+                }
             )
         }
 
@@ -956,16 +1130,26 @@ fun VideoPlayerScreen(
                 onSpeedSelected = { newSpeed ->
                     playbackSpeed = newSpeed
                     exoPlayer.playbackParameters = PlaybackParameters(newSpeed, 1.0f)
+                    saveSettings()
                 },
-                onDismiss = { showSpeedSheet = false }
+                onDismiss = {
+                    showSpeedSheet = false
+                    saveSettings()
+                }
             )
         }
 
         if (showAspectRatioSheet) {
             AspectRatioSheet(
                 currentMode = currentAspectMode,
-                onModeSelected = { currentAspectMode = it },
-                onDismiss = { showAspectRatioSheet = false }
+                onModeSelected = {
+                    currentAspectMode = it
+                    saveSettings()
+                },
+                onDismiss = {
+                    showAspectRatioSheet = false
+                    saveSettings()
+                }
             )
         }
 
@@ -976,8 +1160,12 @@ fun VideoPlayerScreen(
                     activeAudioEngine = engine
                     oboeAudioProcessor.currentEngine = engine
                     onAudioEngineChange?.invoke(engine)
+                    saveSettings()
                 },
-                onDismiss = { showAudioEngineSheet = false }
+                onDismiss = {
+                    showAudioEngineSheet = false
+                    saveSettings()
+                }
             )
         }
 
@@ -1009,14 +1197,17 @@ fun VideoPlayerScreen(
                 onPickExternalSubtitle = { uri ->
                     val fileName = SubtitleUtils.resolveSubtitleFileName(context, uri)
                     val mimeType = SubtitleUtils.detectSubtitleMimeType(fileName)
-                    val assInfo = SubtitleUtils.inspectAssMetadataIfApplicable(context, uri, fileName)
+                    val fullAss = SubtitleUtils.loadFullAssTrackIfApplicable(context, uri, fileName)
+                    val assInfo = fullAss?.summary ?: SubtitleUtils.inspectAssMetadataIfApplicable(context, uri, fileName)
                     val track = SubtitleTrackItem(
                         id = "ext_${System.currentTimeMillis()}",
                         label = fileName,
                         mimeType = mimeType,
                         isExternal = true,
                         uri = uri,
-                        assInfo = assInfo
+                        assInfo = assInfo,
+                        assStyles = fullAss?.styles ?: emptyList(),
+                        assDialogues = fullAss?.dialogues ?: emptyList()
                     )
                     externalSubtitle = track
                     selectedTrackId = track.id
@@ -1045,6 +1236,8 @@ fun VideoPlayerScreen(
                         .buildUpon()
                         .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
                         .build()
+
+                    saveSettings()
                 },
                 onRemoveExternalSubtitle = {
                     externalSubtitle = null
@@ -1059,11 +1252,16 @@ fun VideoPlayerScreen(
                         exoPlayer.prepare()
                         exoPlayer.playWhenReady = wasPlaying
                     }
+                    saveSettings()
                 },
                 onSizeChanged = { newSize ->
                     subtitleSize = newSize
+                    saveSettings()
                 },
-                onDismiss = { showSubtitlesSheet = false }
+                onDismiss = {
+                    showSubtitlesSheet = false
+                    saveSettings()
+                }
             )
         }
 

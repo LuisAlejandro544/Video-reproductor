@@ -7,7 +7,10 @@ import androidx.annotation.OptIn
 import androidx.media3.common.C
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.util.UnstableApi
+import com.example.rust.AssDialogueItem
+import com.example.rust.AssFullResult
 import com.example.rust.AssScriptInfo
+import com.example.rust.AssStyleItem
 import com.example.rust.NovaRustCore
 import java.io.BufferedReader
 import java.io.InputStreamReader
@@ -24,6 +27,8 @@ import java.io.InputStreamReader
  * @param trackGroupIndex Índice del grupo de pistas en ExoPlayer (para pistas internas).
  * @param trackIndex Índice de la pista dentro del grupo (para pistas internas).
  * @param assInfo Metadatos de subtítulos SSA/ASS analizados mediante el motor nativo en Rust.
+ * @param assStyles Listado de estilos SSA/ASS analizados para renderizado tipográfico de precisión.
+ * @param assDialogues Listado de eventos de diálogo con posicionamiento y overrides de color/estilo.
  */
 data class SubtitleTrackItem(
     val id: String,
@@ -34,7 +39,9 @@ data class SubtitleTrackItem(
     val uri: Uri? = null,
     val trackGroupIndex: Int = -1,
     val trackIndex: Int = -1,
-    val assInfo: AssScriptInfo? = null
+    val assInfo: AssScriptInfo? = null,
+    val assStyles: List<AssStyleItem> = emptyList(),
+    val assDialogues: List<AssDialogueItem> = emptyList()
 )
 
 /**
@@ -109,6 +116,25 @@ object SubtitleUtils {
                     count++
                 }
                 NovaRustCore.parseAssSubtitles(sb.toString())
+            }
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    /**
+     * Carga y parsea completamente el script SSA/ASS utilizando el motor en Rust,
+     * obteniendo estilos tipográficos, colores y líneas de diálogo formateadas.
+     */
+    fun loadFullAssTrackIfApplicable(context: Context, uri: Uri, fileName: String): AssFullResult? {
+        val lower = fileName.lowercase()
+        if (!lower.endsWith(".ass") && !lower.endsWith(".ssa")) {
+            return null
+        }
+        return try {
+            context.contentResolver.openInputStream(uri)?.use { stream ->
+                val content = stream.bufferedReader().readText()
+                NovaRustCore.parseAssFull(content)
             }
         } catch (e: Exception) {
             null

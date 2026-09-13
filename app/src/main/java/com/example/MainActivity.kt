@@ -107,6 +107,7 @@ fun MainVideoApp(
 
     // Estado del video seleccionado y posición actual en ms (para conservar al entrar a configuración)
     var currentVideo by remember { mutableStateOf<VideoItem?>(null) }
+    var currentVideoEntity by remember { mutableStateOf<com.example.data.VideoEntity?>(null) }
     var currentPlaybackPositionMs by remember { mutableLongStateOf(0L) }
 
     // Control de visibilidad del diálogo de selección de fuente
@@ -117,9 +118,10 @@ fun MainVideoApp(
         contract = ActivityResultContracts.PickVisualMedia()
     ) { uri ->
         if (uri != null) {
-            viewModel.importVideo(context, uri) { updatedItem, lastPos ->
+            viewModel.importVideo(context, uri) { updatedItem, lastPos, entity ->
                 currentVideo = updatedItem
                 currentPlaybackPositionMs = lastPos
+                currentVideoEntity = entity
                 currentScreen = AppScreen.PLAYER
             }
         }
@@ -130,9 +132,10 @@ fun MainVideoApp(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri ->
         if (uri != null) {
-            viewModel.importVideo(context, uri) { updatedItem, lastPos ->
+            viewModel.importVideo(context, uri) { updatedItem, lastPos, entity ->
                 currentVideo = updatedItem
                 currentPlaybackPositionMs = lastPos
+                currentVideoEntity = entity
                 currentScreen = AppScreen.PLAYER
             }
         }
@@ -175,6 +178,7 @@ fun MainVideoApp(
                     // Pantalla de Reproducción activa (Edge-to-Edge nativa completa)
                     VideoPlayerScreen(
                         videoItem = activeVideo,
+                        initialVideoEntity = currentVideoEntity,
                         currentAudioEngine = selectedAudioEngine,
                         initialPositionMs = currentPlaybackPositionMs,
                         onPositionChanged = { newPos ->
@@ -183,9 +187,14 @@ fun MainVideoApp(
                         onPlaybackProgress = { posMs, durMs ->
                             viewModel.updatePlaybackProgress(activeVideo.uri.toString(), posMs, durMs)
                         },
+                        onSaveVideoSettings = { updatedEntity ->
+                            currentVideoEntity = updatedEntity
+                            viewModel.saveVideoSettings(updatedEntity)
+                        },
                         onBackToHome = {
                             activity?.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
                             currentVideo = null
+                            currentVideoEntity = null
                             currentPlaybackPositionMs = 0L
                             currentScreen = AppScreen.HOME
                         },
@@ -223,9 +232,10 @@ fun MainVideoApp(
                                 android.widget.Toast.makeText(context, errorMsg, android.widget.Toast.LENGTH_LONG).show()
                                 showSourceDialog = true
                             },
-                            onPlay = { item, lastPos ->
+                            onPlay = { item, lastPos, updatedEntity ->
                                 currentVideo = item
                                 currentPlaybackPositionMs = lastPos
+                                currentVideoEntity = updatedEntity
                                 currentScreen = AppScreen.PLAYER
                             }
                         )

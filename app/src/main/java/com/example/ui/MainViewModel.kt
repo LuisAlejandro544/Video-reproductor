@@ -70,7 +70,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun importVideo(
         context: Context,
         rawUri: Uri,
-        onReady: (VideoItem, Long) -> Unit
+        onReady: (VideoItem, Long, VideoEntity) -> Unit
     ) {
         viewModelScope.launch {
             val persistentUri = withContext(Dispatchers.IO) {
@@ -82,21 +82,21 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 durationMs = entity.durationMs,
                 formattedDuration = entity.formattedDuration
             )
-            onReady(updatedItem, entity.lastPositionMs)
+            onReady(updatedItem, entity.lastPositionMs, entity)
         }
     }
 
     /**
      * Registra un video ya resuelto y obtiene su última posición guardada.
      */
-    fun onVideoSelected(videoItem: VideoItem, onReady: (VideoItem, Long) -> Unit) {
+    fun onVideoSelected(videoItem: VideoItem, onReady: (VideoItem, Long, VideoEntity) -> Unit) {
         viewModelScope.launch {
             val entity = repository.recordImportedVideo(getApplication(), videoItem)
             val updatedItem = videoItem.copy(
                 durationMs = entity.durationMs,
                 formattedDuration = entity.formattedDuration
             )
-            onReady(updatedItem, entity.lastPositionMs)
+            onReady(updatedItem, entity.lastPositionMs, entity)
         }
     }
 
@@ -108,7 +108,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun playFromHistory(
         entity: VideoEntity,
         onError: ((String) -> Unit)? = null,
-        onPlay: (VideoItem, Long) -> Unit
+        onPlay: (VideoItem, Long, VideoEntity) -> Unit
     ) {
         val uri = Uri.parse(entity.uriString)
         val isAccessible = VideoUtils.isUriAccessible(getApplication(), uri)
@@ -127,9 +127,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             formattedDuration = entity.formattedDuration
         )
         viewModelScope.launch {
-            // Actualizar marca de tiempo como video recientemente abierto
-            repository.recordImportedVideo(getApplication(), videoItem)
-            onPlay(videoItem, entity.lastPositionMs)
+            // Actualizar marca de tiempo como video recientemente abierto preservando ajustes
+            val updatedEntity = repository.recordImportedVideo(getApplication(), videoItem)
+            onPlay(videoItem, updatedEntity.lastPositionMs, updatedEntity)
+        }
+    }
+
+    /**
+     * Guarda y sincroniza en Room todas las configuraciones personalizadas para un video individual.
+     */
+    fun saveVideoSettings(videoEntity: VideoEntity) {
+        viewModelScope.launch(Dispatchers.IO) {
+            repository.updateVideoSettings(videoEntity)
         }
     }
 

@@ -45,10 +45,66 @@ class VideoRepository(private val videoDao: VideoDao) {
             formattedDuration = formattedDuration,
             lastPositionMs = existing?.lastPositionMs ?: 0L,
             lastPlayedTimestamp = System.currentTimeMillis(),
-            isCompleted = existing?.isCompleted ?: false
+            isCompleted = existing?.isCompleted ?: false,
+            playbackSpeed = existing?.playbackSpeed ?: 1.0f,
+            aspectRatioMode = existing?.aspectRatioMode ?: "FIT",
+            audioEngine = existing?.audioEngine ?: "MEDIA3",
+            audioChannelMode = existing?.audioChannelMode ?: "STEREO",
+            subtitlesEnabled = existing?.subtitlesEnabled ?: true,
+            subtitleSize = existing?.subtitleSize ?: "MEDIUM",
+            externalSubtitleUri = existing?.externalSubtitleUri,
+            externalSubtitleName = existing?.externalSubtitleName,
+            eqBrightness = existing?.eqBrightness ?: 0.0f,
+            eqContrast = existing?.eqContrast ?: 1.0f,
+            eqSaturation = existing?.eqSaturation ?: 1.0f,
+            eqGamma = existing?.eqGamma ?: 1.0f,
+            eqSharpness = existing?.eqSharpness ?: 0.0f,
+            eqBlueLightFilter = existing?.eqBlueLightFilter ?: 0.0f,
+            eqPillarboxBlur = existing?.eqPillarboxBlur ?: true,
+            eqFsrEnabled = existing?.eqFsrEnabled ?: false,
+            eqFsrSharpness = existing?.eqFsrSharpness ?: 0.75f,
+            eqSunMode = existing?.eqSunMode ?: 0.0f,
+            eqAnime4kMode = existing?.eqAnime4kMode ?: 0,
+            eqAnime4kStrength = existing?.eqAnime4kStrength ?: 0.75f
         )
         val generatedId = videoDao.insertOrUpdate(entity)
         entity.copy(id = if (entity.id == 0L) generatedId else entity.id)
+    }
+
+    /**
+     * Actualiza y persiste el conjunto de configuraciones personalizadas de un video específico en Room.
+     */
+    suspend fun updateVideoSettings(videoEntity: VideoEntity) = withContext(Dispatchers.IO) {
+        videoDao.updateVideoSettings(
+            uriString = videoEntity.uriString,
+            playbackSpeed = videoEntity.playbackSpeed,
+            aspectRatioMode = videoEntity.aspectRatioMode,
+            audioEngine = videoEntity.audioEngine,
+            audioChannelMode = videoEntity.audioChannelMode,
+            subtitlesEnabled = videoEntity.subtitlesEnabled,
+            subtitleSize = videoEntity.subtitleSize,
+            externalSubtitleUri = videoEntity.externalSubtitleUri,
+            externalSubtitleName = videoEntity.externalSubtitleName,
+            eqBrightness = videoEntity.eqBrightness,
+            eqContrast = videoEntity.eqContrast,
+            eqSaturation = videoEntity.eqSaturation,
+            eqGamma = videoEntity.eqGamma,
+            eqSharpness = videoEntity.eqSharpness,
+            eqBlueLightFilter = videoEntity.eqBlueLightFilter,
+            eqPillarboxBlur = videoEntity.eqPillarboxBlur,
+            eqFsrEnabled = videoEntity.eqFsrEnabled,
+            eqFsrSharpness = videoEntity.eqFsrSharpness,
+            eqSunMode = videoEntity.eqSunMode,
+            eqAnime4kMode = videoEntity.eqAnime4kMode,
+            eqAnime4kStrength = videoEntity.eqAnime4kStrength
+        )
+    }
+
+    /**
+     * Obtiene la entidad persistida de un video por su URI.
+     */
+    suspend fun getVideoByUri(uriString: String): VideoEntity? = withContext(Dispatchers.IO) {
+        videoDao.findByUri(uriString)
     }
 
     /**

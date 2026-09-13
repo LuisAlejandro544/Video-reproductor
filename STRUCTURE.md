@@ -24,6 +24,11 @@ Este documento detalla la organización de carpetas, responsabilidades de cada m
 ├── gradle/
 │   └── libs.versions.toml       # Catálogo centralizado de versiones y dependencias
 │
+├── rust_core/                   # Módulo Nativo Rust (Subtítulos SSA/ASS y alto rendimiento)
+│   ├── Cargo.toml               # Dependencias de Rust (jni, serde, serde_json, regex)
+│   └── src/
+│       └── lib.rs               # Parser nativo SSA/ASS y exportación JNI (libnova_rust.so)
+│
 ├── app/                         # Módulo principal de Android (Kotlin + C++)
 │   ├── .gitignore               # Exclusiones locales de compilación y .cxx
 │   ├── build.gradle.kts         # Configuración del módulo de aplicación (NDK, Prefab, CMake)
@@ -56,12 +61,19 @@ Este documento detalla la organización de carpetas, responsabilidades de cada m
 │       │   │   │   ├── VideoEqualizerState.kt # Modelo de parámetros de ecualización, modo sol, descanso visual, pillarbox blur, AMD FSR 1.0 y Anime4kMode
 │       │   │   │   └── OpenGLVideoSurface.kt  # GLSurfaceView.Renderer (doble paso con Pillarbox Blur, Modo Sol, AMD FSR 1.0 y Anime4K) y VideoPlayerView
 │       │   │   │
-│       │   │   ├── data/             # Persistencia local con Room (SQLite) y SharedPreferences
-│       │   │   │   ├── AppDatabase.kt         # Base de datos Room singleton
+│       │   │   ├── data/             # Persistencia local con Room (SQLite v2) y SharedPreferences
+│       │   │   │   ├── AppDatabase.kt         # Base de datos Room singleton con esquema v2
 │       │   │   │   ├── AppPreferences.kt      # Almacenamiento persistente de configuraciones (motor de audio Media3/Oboe)
 │       │   │   │   ├── VideoDao.kt            # Operaciones reactivas DAO con Flow
-│       │   │   │   ├── VideoEntity.kt         # Entidad persistente de video importado/visto
+│       │   │   │   ├── VideoEntity.kt         # Entidad persistente ampliada: progreso y 18 configuraciones por video
 │       │   │   │   └── VideoRepository.kt     # Abstracción y operaciones asíncronas
+│       │   │   │
+│       │   │   ├── rust/             # Capa de integración JNI con núcleo nativo Rust
+│       │   │   │   └── NovaRustCore.kt        # Carga de libnova_rust.so y llamadas JNI a parseAssFull
+│       │   │   │
+│       │   │   ├── subtitles/        # Modelos y capa de renderizado de subtítulos avanzados
+│       │   │   │   ├── AssSubtitleOverlay.kt  # Renderizado dinámico Compose de diálogos ASS/SSA (posicionamiento 9 puntos y contornos)
+│       │   │   │   └── SubtitleModels.kt      # Modelos serializables de estilos ASS, diálogos y tamaños tipográficos
 │       │   │   │
 │       │   │   ├── model/            # Modelos de datos
 │       │   │   │   └── VideoItem.kt  # Modelo de metadatos de video (URI, nombre, tamaño, duración)
@@ -78,7 +90,7 @@ Este documento detalla la organización de carpetas, responsabilidades de cada m
 │       │   │   │   ├── MainViewModel.kt       # ViewModel central de la biblioteca e importados con StateFlow de audio
 │       │   │   │   ├── PillarboxBlurSheet.kt  # Pantalla exclusiva e independiente de desenfoque de fondo vertical (Pillarbox)
 │       │   │   │   ├── PlaybackSpeedSheet.kt  # Pantalla exclusiva e independiente de velocidad de reproducción (hasta 2x)
-│       │   │   │   ├── PlayerToolsSideSheet.kt # Panel lateral de navegación exclusiva entre herramientas
+│       │   │   │   ├── PlayerToolsSideSheet.kt # Panel lateral con bloqueo reactivo (candado) según el motor activo
 │       │   │   │   ├── SettingsScreen.kt      # Coordinador principal de configuración con navegación Hub-and-Spoke
 │       │   │   │   ├── StereoMonoSheet.kt     # Pantalla exclusiva e independiente de enrutamiento estéreo/mono y efecto Haas 3D
 │       │   │   │   ├── SubtitlesBottomSheet.kt # Panel modal de selección de subtítulos internos/externos y tamaño tipográfico
@@ -87,7 +99,7 @@ Este documento detalla la organización de carpetas, responsabilidades de cada m
 │       │   │   │   ├── VideoImportScreen.kt   # Coordinador modular de biblioteca e importación de videos
 │       │   │   │   ├── VideoPlayerScreen.kt   # Coordinador modular de reproducción con ExoPlayer y OpenGL
 │       │   │   │   ├── VideoSourceDialog.kt   # Diálogo para alternar Galería / Gestor de archivos
-│       │   │   │   ├── VoiceNightAudioSheet.kt # Pantalla exclusiva e independiente de Compresor Dinámico y Voces Claras en C++
+│       │   │   │   ├── VoiceNightAudioSheet.kt # Pantalla exclusiva de DSP en C++ con candado y desbloqueo para Media3
 │       │   │   │   │
 │       │   │   │   ├── library/          # Módulos desacoplados de la biblioteca de medios
 │       │   │   │   │   ├── ImportQuickCard.kt    # Tarjeta de importación rápida con selector SAF / Galería
@@ -113,7 +125,7 @@ Este documento detalla la organización de carpetas, responsabilidades de cada m
 │       │   │   │   │
 │       │   │   │   └── theme/            # Paleta de colores, tipografía y tema oscuro
 │       │   │   │       ├── Color.kt
-│       │   │   │       ├── Theme.kt
+│       │   │   │       ├── Theme.kt         # Tema M3 con escala de fuente aislada fija (fontScale = 1.0f)
 │       │   │   │       └── Type.kt
 │       │   │   │
 │       │   │   └── utils/            # Utilidades auxiliares

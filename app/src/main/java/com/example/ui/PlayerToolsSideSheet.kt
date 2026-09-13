@@ -57,6 +57,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.audio.AudioEngineType
 
 /**
  * Identificadores de las herramientas independientes disponibles en el reproductor.
@@ -84,6 +85,7 @@ enum class PlayerToolItem {
  * sin saturar la barra de reproducción ni mezclar configuraciones dispares.
  *
  * @param visible Indica si el menú lateral está desplegado.
+ * @param currentAudioEngine Motor de audio actualmente activo (OBOE o MEDIA3).
  * @param onDismiss Callback cuando el usuario toca fuera del panel o lo cierra.
  * @param onSelectTool Callback que se dispara al seleccionar una herramienta específica.
  */
@@ -92,6 +94,7 @@ fun PlayerToolsSideSheet(
     visible: Boolean,
     onDismiss: () -> Unit,
     onSelectTool: (PlayerToolItem) -> Unit,
+    currentAudioEngine: AudioEngineType = AudioEngineType.OBOE,
     modifier: Modifier = Modifier
 ) {
     if (!visible) return
@@ -266,11 +269,16 @@ fun PlayerToolsSideSheet(
                         )
 
                         // 8. Compresor Dinámico / Modo Voces Claras (Night Mode Audio)
+                        // Funcionalidad dependiente del motor C++ nativo de Google Oboe.
+                        // Si se utiliza Media3, se bloquea visualmente con un candado.
+                        val isVoiceNightLocked = (currentAudioEngine == AudioEngineType.MEDIA3)
                         ToolMenuItem(
                             icon = Icons.Default.GraphicEq,
                             label = "Audio DSP Inteligente",
-                            description = "Voces claras y compresor nocturno",
+                            description = if (isVoiceNightLocked) "Bloqueado • Requiere Google Oboe C++" else "Voces claras y compresor nocturno",
                             testTag = "tool_item_voice_night_audio",
+                            isLocked = isVoiceNightLocked,
+                            lockBadge = if (isVoiceNightLocked) "Bloqueado con Media3" else null,
                             onClick = {
                                 onDismiss()
                                 onSelectTool(PlayerToolItem.VOICE_NIGHT_AUDIO)
@@ -333,6 +341,7 @@ fun PlayerToolsSideSheet(
 
 /**
  * Componente individual de fila para cada opción del menú lateral de herramientas.
+ * Admite estado bloqueado (isLocked) mostrando un candado y distintivo explicativo.
  */
 @Composable
 private fun ToolMenuItem(
@@ -341,8 +350,11 @@ private fun ToolMenuItem(
     description: String,
     testTag: String,
     onClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    isLocked: Boolean = false,
+    lockBadge: String? = null
 ) {
+    val alpha = if (isLocked) 0.70f else 1.0f
     Row(
         modifier = modifier
             .fillMaxWidth()
@@ -353,26 +365,58 @@ private fun ToolMenuItem(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = null,
-            tint = Color.White,
-            modifier = Modifier.size(24.dp)
-        )
+        Box(contentAlignment = Alignment.Center) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = if (isLocked) Color(0xFFF59E0B) else Color.White,
+                modifier = Modifier.size(24.dp)
+            )
+        }
 
         Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = label,
-                style = MaterialTheme.typography.bodyLarge.copy(
-                    fontWeight = FontWeight.SemiBold,
-                    color = Color.White,
-                    fontSize = 15.sp
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Text(
+                    text = label,
+                    style = MaterialTheme.typography.bodyLarge.copy(
+                        fontWeight = FontWeight.SemiBold,
+                        color = Color.White.copy(alpha = alpha),
+                        fontSize = 15.sp
+                    )
                 )
-            )
+                if (isLocked) {
+                    Icon(
+                        imageVector = Icons.Default.Lock,
+                        contentDescription = "Función bloqueada",
+                        tint = Color(0xFFF59E0B),
+                        modifier = Modifier.size(15.dp)
+                    )
+                }
+            }
+
+            if (isLocked && lockBadge != null) {
+                Spacer(modifier = Modifier.height(2.dp))
+                Surface(
+                    shape = RoundedCornerShape(4.dp),
+                    color = Color(0xFFF59E0B).copy(alpha = 0.20f)
+                ) {
+                    Text(
+                        text = lockBadge,
+                        color = Color(0xFFFBBF24),
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
+                    )
+                }
+            }
+
             Text(
                 text = description,
                 style = MaterialTheme.typography.bodySmall.copy(
-                    color = Color.White.copy(alpha = 0.6f),
+                    color = if (isLocked) Color(0xFFFBBF24).copy(alpha = 0.8f) else Color.White.copy(alpha = 0.6f),
                     fontSize = 11.sp
                 )
             )

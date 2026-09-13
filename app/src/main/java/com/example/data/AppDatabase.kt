@@ -10,7 +10,7 @@ import androidx.room.RoomDatabase
  *
  * Persiste localmente los registros multimedia del usuario en una base de datos SQLite segura y de alto rendimiento.
  */
-@Database(entities = [VideoEntity::class], version = 1, exportSchema = false)
+@Database(entities = [VideoEntity::class], version = 2, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
 
     abstract fun videoDao(): VideoDao

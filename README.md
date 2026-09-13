@@ -28,16 +28,27 @@
     - **Prueba de Sonido:** Generador senoidal PCM de 440 Hz para validación física de salida de hardware.
     - **Telemetría y Rendimiento:** Monitoreo en tiempo real de tramas C++, buffers de memoria y perfil Android Go.
     - **Arquitectura y Distribución:** Información de compilación 32/64 bits, licencias permisivas y portabilidad APK para Uptodown.
-- **Soporte y Gestión de Subtítulos SRT (.srt - SubRip) y WebVTT (.vtt):**
-  - Renderizado en tiempo real sincronizado mediante `SubtitleView` sobre la superficie de video OpenGL.
+- **Soporte y Gestión de Subtítulos Avanzados: SRT (.srt), WebVTT (.vtt) y SSA/ASS (.ass / .ssa con Rust Core):**
+  - **Motor Nativo Rust de Subtítulos Complejos (`NovaRustCore`):**
+    - Parsing sin copias en Rust (`libnova_rust.so`) de scripts SSA/ASS, extrayendo resolución virtual (`PlayResX`/`PlayResY`), estilos tipográficos completos y eventos de diálogo.
+    - Componente Jetpack Compose dedicado `AssSubtitleOverlay`: posicionamiento proporcional virtual, alineación geométrica de 9 puntos (estilo teclado numérico ASS), doble contorno tipográfico de alto contraste y conversión de paletas cromáticas BGR/ABGR a RGB/ARGB.
+  - Renderizado en tiempo real sincronizado mediante `SubtitleView` sobre la superficie de video OpenGL para pistas estándar (SRT/VTT).
   - Detección automática y selección de pistas de subtítulos internas integradas en contenedores MKV/MP4.
-  - Carga e importación de archivos de subtítulos externos (`.srt` y `.vtt`) desde el almacenamiento del dispositivo o tarjeta MicroSD mediante el Storage Access Framework.
+  - Carga e importación de archivos de subtítulos externos (`.srt`, `.vtt`, `.ass`, `.ssa`) desde el almacenamiento del dispositivo o tarjeta MicroSD mediante el Storage Access Framework.
   - Panel modal inferior de configuración rápida (`SubtitlesBottomSheet`):
     - Activación y desactivación instantánea de subtítulos.
-    - Selector interactivo de pistas disponibles con indicación del idioma o archivo cargado.
+    - Selector interactivo de pistas disponibles con indicación del idioma o archivo cargado y etiqueta de metadatos ASS (resolución y estilos).
     - Personalización de tamaño tipográfico en 4 niveles (Pequeño, Normal, Grande, Extra Grande).
     - Botón de acceso rápido `CC` en la barra de controles con etiqueta visual `CC On` cuando se encuentran activos.
-    - Estilizado de alto contraste (texto blanco con borde negro) para legibilidad óptima sobre fondos claros y oscuros.
+- **Persistencia Avanzada de Configuraciones por Video (Room Database SQLite v2):**
+  - Guardado y restauración individualizada para cada archivo de video:
+    - **Velocidad de reproducción** (0.25x a 2.0x).
+    - **Relación de aspecto de pantalla** (Ajustar, Zoom completo, Llenar).
+    - **Motor de audio preferido** (Google Oboe C++ o Media3 AudioTrack).
+    - **Enrutamiento de canales de audio** (Estéreo, Mono centrado, Pseudo-Estéreo Haas 3D).
+    - **Subtítulo externo y tamaño tipográfico** asignados al archivo.
+    - **Calibración completa de Ecualizador y Shaders OpenGL ES:** Brillo, contraste, saturación, gamma, nitidez, filtro de luz azul, Pillarbox Blur (desenfoque para videos verticales), AMD FidelityFX FSR 1.0 (activación e intensidad RCAS), Modo Sol Extremo y perfiles Anime4K.
+  - Permite retomar cualquier video conservando exactamente los mismos retoques visuales y acústicos que se le configuraron previamente sin alterar los demás videos.
 - **Búfer de Memoria RAM Adaptativo (Protección Anti-OOM para Android Go y Teléfonos Modestos):**
   - Gestión inteligente de memoria en tiempo de ejecución mediante `PlayerLoadControlHelper`:
     - **Perfil Android Go / Modesto (≤ 2.5 GB de RAM o `isLowRamDevice`):** Búfer estricto de 4s a 10s y límite máximo de memoria asignable de 16 MB a 24 MB en `DefaultAllocator`. Previene que el sistema operativo mate la aplicación por el *Low Memory Killer* (LMK) durante la reproducción de videos pesados.
@@ -48,7 +59,7 @@
   - Extracción y muestra inmediata de metadatos: **título completo del archivo**, **tamaño** y **duración formateada** (ej. `04:32` o `01:20:15`).
   - Barra de progreso visual interactiva indicando el porcentaje visto y la marca de tiempo de pausa (ej. *En pausa en 02:15* o *Visto completo*).
   - Reproducción o reanudación instantánea con un solo toque directamente desde la posición guardada.
-  - Gestión del historial: eliminación de videos individuales o vaciado total mediante confirmación.
+  - Gestión del historial: renombrado en base de datos, eliminación de videos individuales o vaciado total mediante confirmación.
 - **Ecualizador de Video en Tiempo Real y Efectos Visuales con OpenGL ES (C++ y Shaders GPU):**
   - Postprocesamiento de imagen en tiempo real sin pausas ni interrupciones mediante pipeline gráfico nativo en C++ (`VideoColorEngine`) y textura externa *Zero-Copy* (`GL_TEXTURE_EXTERNAL_OES`).
   - Shaders de fragmentos GLSL ejecutados directamente en los núcleos de sombreado de la GPU.
@@ -100,12 +111,18 @@
     - **Modo Sol Extremo (`SunModeSheet`):** Pantalla independiente de compensación para exteriores bajo luz solar directa y perfiles de alto contraste para accesibilidad.
     - **Relleno Desenfoque Vertical (`PillarboxBlurSheet`):** Pantalla exclusiva para configurar el desenfoque Gaussiano y atenuación de fondo cuando un video vertical se reproduce con bandas negras.
     - **Super-Resolución AMD FSR 1.0 (`FsrUpscaleSheet`):** Pantalla dedicada para activar el escalado espacial adaptativo (EASU) y regular la nitidez dependiente del contraste (RCAS).
-    - **Compresor Dinámico y Voces Claras (`VoiceNightAudioSheet`):** Pantalla dedicada para realce de diálogos y compresión de rango dinámico para cine nocturno en DSP C++.
+    - **Compresor Dinámico y Voces Claras (`VoiceNightAudioSheet`):** Pantalla dedicada para realce de diálogos y compresión de rango dinámico para cine nocturno en DSP C++. Cuenta con candado visual y bloqueo preventivo si se utiliza Media3, ofreciendo un botón de desbloqueo instantáneo hacia Google Oboe C++.
     - **Relación de Aspecto (`AspectRatioSheet`):** Selector independiente de proporción geométrica (*Ajustar*, *Zoom*, *Llenar*).
     - **Motor de Audio (`AudioEngineSheet`):** Selector independiente entre Google Oboe nativo en C++ y Android Media3.
     - **Velocidad de Reproducción (`PlaybackSpeedSheet`):** Panel dedicado de velocidad con *Sonic Pitch Preservation*.
     - **Gestor de Subtítulos (`SubtitlesBottomSheet`):** Configuración de subtítulos internos y externos con ajuste de escala tipográfica.
     - **Bloqueo de Controles (`Lock`):** Modo para inmovilizar gestos y toques accidentales con botón flotante animado de desbloqueo instantáneo.
+- **Aislamiento de Escala de Fuente del Sistema Operativo (`fontScale = 1.0f`):**
+  - La aplicación define su propia escala tipográfica óptima e independiente de la configuración global de tamaño de texto de Android.
+  - Previene distorsiones visuales, desbordamientos de paneles y solapamientos en menús o subtítulos cuando el usuario tiene configurada una fuente gigante o reducida en su teléfono.
+- **Sistema de Candado Inteligente para Funciones Exclusivas de Oboe en Media3:**
+  - Cuando el reproductor opera en modo Media3, las herramientas dependientes de procesamiento DSP en tiempo real (Compresor Dinámico Nocturno y Voces Claras) se bloquean con un icono de candado visible tanto en el menú lateral como en la hoja de ajustes.
+  - Se incluye un banner explicativo y un botón directo para activar Google Oboe C++ y desbloquear todas las capacidades de sonido de alta fidelidad sin rodeos.
 - **Doble Motor de Audio Seleccionable con Persistencia:**
   - **Media3 (AudioTrack Estándar) [Predeterminado]:** Pipeline nativo estándar de Android con sincronización A/V automática, compensación de retardo para auriculares Bluetooth y compatibilidad universal con todos los dispositivos.
   - **Google Oboe (Nativo C++):** Motor de ultra baja latencia que interactúa directamente con **AAudio** en Android 8.0+ y realiza fallback automático a **OpenSL ES** en hardware heredado. Elimina microcortes y asegura procesamiento directo a nivel de muestra.

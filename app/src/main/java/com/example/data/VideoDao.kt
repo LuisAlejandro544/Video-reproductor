@@ -66,6 +66,58 @@ interface VideoDao {
     suspend fun updateName(id: Long, newName: String)
 
     /**
+     * Actualiza el conjunto de configuraciones personalizadas de un video específico:
+     * velocidad, relación de aspecto, motor de audio, canal de audio, subtítulos y ecualizador/shaders.
+     */
+    @Query("""
+        UPDATE video_history 
+        SET playbackSpeed = :playbackSpeed,
+            aspectRatioMode = :aspectRatioMode,
+            audioEngine = :audioEngine,
+            audioChannelMode = :audioChannelMode,
+            subtitlesEnabled = :subtitlesEnabled,
+            subtitleSize = :subtitleSize,
+            externalSubtitleUri = :externalSubtitleUri,
+            externalSubtitleName = :externalSubtitleName,
+            eqBrightness = :eqBrightness,
+            eqContrast = :eqContrast,
+            eqSaturation = :eqSaturation,
+            eqGamma = :eqGamma,
+            eqSharpness = :eqSharpness,
+            eqBlueLightFilter = :eqBlueLightFilter,
+            eqPillarboxBlur = :eqPillarboxBlur,
+            eqFsrEnabled = :eqFsrEnabled,
+            eqFsrSharpness = :eqFsrSharpness,
+            eqSunMode = :eqSunMode,
+            eqAnime4kMode = :eqAnime4kMode,
+            eqAnime4kStrength = :eqAnime4kStrength
+        WHERE uriString = :uriString
+    """)
+    suspend fun updateVideoSettings(
+        uriString: String,
+        playbackSpeed: Float,
+        aspectRatioMode: String,
+        audioEngine: String,
+        audioChannelMode: String,
+        subtitlesEnabled: Boolean,
+        subtitleSize: String,
+        externalSubtitleUri: String?,
+        externalSubtitleName: String?,
+        eqBrightness: Float,
+        eqContrast: Float,
+        eqSaturation: Float,
+        eqGamma: Float,
+        eqSharpness: Float,
+        eqBlueLightFilter: Float,
+        eqPillarboxBlur: Boolean,
+        eqFsrEnabled: Boolean,
+        eqFsrSharpness: Float,
+        eqSunMode: Float,
+        eqAnime4kMode: Int,
+        eqAnime4kStrength: Float
+    )
+
+    /**
      * Limpia todo el historial de videos importados.
      */
     @Query("DELETE FROM video_history")

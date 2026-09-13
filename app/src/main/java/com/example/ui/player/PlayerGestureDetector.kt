@@ -16,6 +16,7 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.changedToUp
@@ -64,10 +65,18 @@ fun PlayerGestureSurface(
     var singleTapJob by remember { mutableStateOf<Job?>(null) }
     var gestureHideJob by remember { mutableStateOf<Job?>(null) }
 
-    var localVolumeFraction by remember(currentVolume, maxVolume) {
-        val initialFrac = if (maxVolume > 0) currentVolume.toFloat() / maxVolume.toFloat() else 0.5f
-        mutableFloatStateOf(initialFrac.coerceIn(0f, 1f))
-    }
+    // Estados actualizados reactivamente para el bucle de puntero asíncrono
+    val currentBrightnessUpdated by rememberUpdatedState(currentBrightness)
+    val onBrightnessChangeUpdated by rememberUpdatedState(onBrightnessChange)
+    val currentVolumeUpdated by rememberUpdatedState(currentVolume)
+    val maxVolumeUpdated by rememberUpdatedState(maxVolume)
+    val onVolumeChangeUpdated by rememberUpdatedState(onVolumeChange)
+    val onSingleTapUpdated by rememberUpdatedState(onSingleTap)
+    val onDoubleTapSeekUpdated by rememberUpdatedState(onDoubleTapSeek)
+    val onStartFastForward2xUpdated by rememberUpdatedState(onStartFastForward2x)
+    val onStopFastForward2xUpdated by rememberUpdatedState(onStopFastForward2x)
+    val onShowGestureIndicatorUpdated by rememberUpdatedState(onShowGestureIndicator)
+    val onHideGestureIndicatorUpdated by rememberUpdatedState(onHideGestureIndicator)
 
     Box(
         modifier = modifier
@@ -97,6 +106,21 @@ fun PlayerGestureSurface(
                         val isRightSide = startX >= (size.width / 2f)
                         val touchSlop = viewConfiguration.touchSlop
 
+                        // Brillo base exacto al iniciar la interacción táctil (evita regresiones o saltos bruscos)
+                        val winBrightness = activity?.window?.attributes?.screenBrightness ?: -1f
+                        var gestureBrightness = if (winBrightness in 0.01f..1.0f) {
+                            winBrightness
+                        } else {
+                            currentBrightnessUpdated
+                        }
+
+                        // Fracción base de volumen al iniciar la interacción táctil
+                        var gestureVolumeFraction = if (maxVolumeUpdated > 0) {
+                            (currentVolumeUpdated.toFloat() / maxVolumeUpdated.toFloat()).coerceIn(0f, 1f)
+                        } else {
+                            0.5f
+                        }
+
                         var isFastForwardActive = false
 
                         val fastForwardJob = if (isRightSide && !isControlsLocked) {
@@ -104,7 +128,7 @@ fun PlayerGestureSurface(
                                 delay(400)
                                 if (!hasDragged) {
                                     isFastForwardActive = true
-                                    onStartFastForward2x()
+                                    onStartFastForward2xUpdated()
                                     try {
                                         view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
                                     } catch (_: Throwable) {}
@@ -121,7 +145,7 @@ fun PlayerGestureSurface(
                                     fastForwardJob?.cancel()
                                     if (isFastForwardActive) {
                                         isFastForwardActive = false
-                                        onStopFastForward2x()
+                                        onStopFastForward2xUpdated()
                                         try {
                                             view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
                                         } catch (_: Throwable) {}
@@ -136,14 +160,14 @@ fun PlayerGestureSurface(
                                                 singleTapJob?.cancel()
                                                 singleTapJob = null
                                                 lastTapTimeMs = 0L
-                                                onSingleTap()
+                                                onSingleTapUpdated()
                                             } else {
                                                 if (now - lastTapTimeMs < 320 && lastTapIsLeft == isLeft) {
                                                     singleTapJob?.cancel()
                                                     singleTapJob = null
                                                     lastTapTimeMs = 0L
 
-                                                    onDoubleTapSeek(isLeft)
+                                                    onDoubleTapSeekUpdated(isLeft)
 
                                                     try {
                                                         view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
@@ -155,7 +179,7 @@ fun PlayerGestureSurface(
                                                     singleTapJob?.cancel()
                                                     singleTapJob = coroutineScope.launch {
                                                         delay(160)
-                                                        onSingleTap()
+                                                        onSingleTapUpdated()
                                                         lastTapTimeMs = 0L
                                                     }
                                                 }
@@ -165,7 +189,7 @@ fun PlayerGestureSurface(
                                         gestureHideJob?.cancel()
                                         gestureHideJob = coroutineScope.launch {
                                             delay(1000)
-                                            onHideGestureIndicator()
+                                            onHideGestureIndicatorUpdated()
                                         }
                                     }
                                     change.consume()
@@ -182,26 +206,28 @@ fun PlayerGestureSurface(
                                         hasDragged = true
                                         change.consume()
                                         gestureHideJob?.cancel()
-                                        onShowGestureIndicator(if (isLeft) GestureIndicatorType.BRIGHTNESS else GestureIndicatorType.VOLUME)
+                                        onShowGestureIndicatorUpdated(if (isLeft) GestureIndicatorType.BRIGHTNESS else GestureIndicatorType.VOLUME)
                                         currentY = change.position.y
                                     }
                                 } else {
                                     change.consume()
+                                    // Sensibilidad de arrastre: deslizamiento hacia arriba suma, hacia abajo resta
                                     val delta = -dragAmountY / (size.height.toFloat().coerceAtLeast(1f) * 0.45f)
                                     if (isLeft) {
-                                        val newBrightness = (currentBrightness + delta).coerceIn(0.01f, 1f)
-                                        onBrightnessChange(newBrightness)
+                                        // Acumulación progresiva sobre la variable local: elimina el rebote o caída de brillo
+                                        gestureBrightness = (gestureBrightness + delta).coerceIn(0.01f, 1f)
+                                        onBrightnessChangeUpdated(gestureBrightness)
                                         val window = activity?.window
                                         if (window != null) {
                                             val lp = window.attributes
-                                            lp.screenBrightness = newBrightness
+                                            lp.screenBrightness = gestureBrightness
                                             window.attributes = lp
                                         }
                                     } else {
-                                        localVolumeFraction = (localVolumeFraction + delta).coerceIn(0f, 1f)
-                                        val targetVol = (localVolumeFraction * maxVolume).roundToInt().coerceIn(0, maxVolume)
-                                        if (targetVol != currentVolume) {
-                                            onVolumeChange(targetVol)
+                                        gestureVolumeFraction = (gestureVolumeFraction + delta).coerceIn(0f, 1f)
+                                        val targetVol = (gestureVolumeFraction * maxVolumeUpdated).roundToInt().coerceIn(0, maxVolumeUpdated)
+                                        if (targetVol != currentVolumeUpdated) {
+                                            onVolumeChangeUpdated(targetVol)
                                             audioManager?.setStreamVolume(AudioManager.STREAM_MUSIC, targetVol, 0)
                                         }
                                     }
@@ -212,7 +238,7 @@ fun PlayerGestureSurface(
                             fastForwardJob?.cancel()
                             if (isFastForwardActive) {
                                 isFastForwardActive = false
-                                onStopFastForward2x()
+                                onStopFastForward2xUpdated()
                             }
                         }
                     }

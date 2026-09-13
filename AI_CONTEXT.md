@@ -261,3 +261,49 @@ Este archivo proporciona el contexto técnico, arquitectónico y operativo neces
 - **Prevención de Pérdida Accidental:** En `VideoImportScreen.kt`, al tocar el botón de eliminar de una tarjeta del historial, se activa el estado `videoPendingDelete`.
 - **Diálogo Modal Informativo (`AlertDialog`):** Muestra el nombre exacto del archivo, una advertencia explícita aclarando que el archivo original no se borrará del almacenamiento del teléfono, botón destructivo "Eliminar" y botón "Cancelar".
 
+### 22. Aislamiento de Escala de Fuente del Sistema Operativo (`fontScale = 1.0f`)
+- **Propósito y Experiencia de Usuario:** Los reproductores multimedia avanzados requieren proporciones tipográficas rigurosas y predecibles en los controles flotantes, paneles laterales, contadores de tiempo y subtítulos para evitar que textos sobredimensionados rompan la diagramación o desborden la pantalla horizontal.
+- **Implementación en `Theme.kt`:** 
+  - Mediante `CompositionLocalProvider(LocalDensity provides Density(density = originalDensity.density, fontScale = 1.0f))`, toda la jerarquía de Jetpack Compose adopta una escala de fuente exacta `1.0f`.
+  - La densidad de píxeles (`dp`) del dispositivo se mantiene intacta, pero el escalado de accesibilidad de texto del sistema (`sp`) se fija al tamaño óptimo y equilibrado del diseño de la aplicación.
+
+### 23. Bloqueo Visual con Candado de Funciones Exclusivas de Google Oboe en Media3
+- **Diferenciación Arquitectónica de Motores:**
+  - **Google Oboe C++:** Es el único motor con pipeline DSP en tiempo real sobre tramas PCM (Filtro Peaking de Voces Claras y Compresor Dinámico Nocturno DRC).
+  - **Android Media3:** Utiliza el pipeline estándar del sistema Android sin el módulo de efectos por hardware en C++.
+- **Mecanismo de Candado en UI:**
+  - En `PlayerToolsSideSheet.kt`: Al estar seleccionado Media3, la opción *Audio DSP Inteligente* exhibe un icono de candado (`Icons.Default.Lock`), un distintivo ámbar `Bloqueado con Media3` y una descripción indicando que requiere Google Oboe C++.
+  - En `VoiceNightAudioSheet.kt`: Se despliega un banner superior de advertencia estética con candado, se bloquean los interruptores (`Switch(enabled = false)`) y presets rápidos, y se provee un botón directo de acción: `"Activar Google Oboe C++ (Desbloquear)"`, permitiendo alternar el motor y habilitar el procesamiento en tiempo real con un solo toque.
+
+### 24. Aceleración con Núcleo Rust y Renderizado de Subtítulos Complejos SSA/ASS (Fase 5)
+- **Módulo Nativo Rust (`rust_core` / `libnova_rust.so`):**
+  - Compilación cruzada para las 4 arquitecturas soportadas (`arm64-v8a`, `armeabi-v7a`, `x86`, `x86_64`) mediante `cargo-ndk`.
+  - Carga segura y sin fallbacks falsos en Kotlin (`NovaRustCore.kt`).
+  - Parser ultra-eficiente de scripts SSA/ASS:
+    - Extrae la resolución de renderizado virtual (`PlayResX` y `PlayResY`) para un posicionamiento proporcional independiente de la pantalla física.
+    - Decodifica la tabla de estilos `[V4+ Styles]` (fuente, tamaño, colores primario y contorno con conversión BGR/ABGR a ARGB estándar, bordes y márgenes).
+    - Procesa los eventos `[Events] / Dialogue` calculando marcas de tiempo de inicio y fin en milisegundos y limpiando etiquetas de control complejas `{\tag}`.
+    - Serialización binaria rápida vía JSON con `serde` / `serde_json`, deserializada en Kotlin mediante `kotlinx.serialization`.
+- **Componente de Renderizado `AssSubtitleOverlay` (Jetpack Compose):**
+  - Renderizado sincronizado al milisegundo sobre la superficie de video OpenGL.
+  - Soporte de alineación geométrica de 9 puntos (estilo teclado numérico del estándar ASS: 1 a 9, ej. Bottom-Left, Bottom-Center, Top-Center, Middle).
+  - Efecto de doble contorno (*stroke outline*) para contraste absoluto sobre escenas oscuras o brillantes.
+  - Escala tipográfica dinámica gobernada por el ajuste de tamaño (`SubtitleSize`) seleccionado por el usuario.
+
+### 25. Persistencia Granular de Configuraciones por Video en Room Database (SQLite v2)
+- **Motivación y Experiencia de Usuario:** Cada video puede requerir ajustes únicos (ej. un video antiguo en baja resolución necesita FSR 1.0 y 1.25x de velocidad; un anime requiere realce Anime4K y subtítulo `.ass`; un video musical requiere Oboe y efecto Haas 3D). La aplicación ahora guarda y restaura de forma completamente individualizada las configuraciones para cada archivo.
+- **Entidad `VideoEntity` (Room Database v2):**
+  - Se añadieron columnas específicas para almacenar el estado completo:
+    - `playbackSpeed`: Velocidad (0.25x a 2.0x).
+    - `aspectRatioMode`: Ajuste geométrico (Fit, Zoom, Fill).
+    - `audioEngine`: Motor de audio (Media3 u Oboe).
+    - `audioChannelMode`: Enrutamiento estéreo, mono o Haas 3D.
+    - `subtitlesEnabled` y `subtitleSize`: Estado de visualización y tamaño de subtítulos.
+    - `externalSubtitleUri` y `externalSubtitleName`: Referencia al archivo de subtítulo externo cargado.
+    - 12 parámetros de Shaders OpenGL ES: brillo, contraste, saturación, gamma, nitidez, luz azul, Pillarbox Blur, AMD FSR 1.0 (activo y nitidez RCAS), Modo Sol Extremo (activo e intensidad), y Anime4K (modo y fuerza).
+- **Sincronización en Caliente:**
+  - `VideoPlayerScreen` inicializa sus controles a partir de `initialVideoEntity`.
+  - Cada vez que el usuario ajusta un parámetro o cierra un panel modal de herramientas (`onDismiss`), se dispara `saveSettings()` persistiendo las preferencias en la base de datos a través de `MainViewModel`.
+  - La persistencia también se asegura al salir del reproductor (`BackHandler` y `onBack`).
+
+
