@@ -1,8 +1,10 @@
 package com.example.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -12,6 +14,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -219,14 +222,30 @@ fun SunModeSheet(
                         },
                         valueRange = 0.1f..1.0f,
                         steps = 18,
-                        colors = SliderDefaults.colors(
-                            thumbColor = Color(0xFFF59E0B),
-                            activeTrackColor = Color(0xFFF59E0B),
-                            inactiveTrackColor = Color(0xFF33333C)
-                        ),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .testTag("sun_mode_intensity_slider")
+                            .height(32.dp)
+                            .testTag("sun_mode_intensity_slider"),
+                        thumb = {
+                            Box(
+                                modifier = Modifier
+                                    .size(14.dp)
+                                    .background(Color.White, CircleShape)
+                                    .border(2.dp, Color(0xFFF59E0B), CircleShape)
+                            )
+                        },
+                        track = { sliderState ->
+                            SliderDefaults.Track(
+                                sliderState = sliderState,
+                                modifier = Modifier.height(4.dp),
+                                colors = SliderDefaults.colors(
+                                    activeTrackColor = Color(0xFFF59E0B),
+                                    inactiveTrackColor = Color(0xFF33333C)
+                                ),
+                                drawStopIndicator = null,
+                                thumbTrackGapSize = 0.dp
+                            )
+                        }
                     )
                 }
 

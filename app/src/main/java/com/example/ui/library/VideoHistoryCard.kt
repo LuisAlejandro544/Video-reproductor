@@ -278,40 +278,6 @@ fun VideoHistoryCard(
                         )
                     }
                 }
-
-                // Acciones: Botón de Renombrar y Botón de Eliminar
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(2.dp)
-                ) {
-                    IconButton(
-                        onClick = onRename,
-                        modifier = Modifier
-                            .size(34.dp)
-                            .testTag("rename_video_${video.id}")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Edit,
-                            contentDescription = "Modificar nombre del video",
-                            tint = Color(0xFF38BDF8).copy(alpha = 0.85f),
-                            modifier = Modifier.size(17.dp)
-                        )
-                    }
-
-                    IconButton(
-                        onClick = onDelete,
-                        modifier = Modifier
-                            .size(34.dp)
-                            .testTag("delete_video_${video.id}")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.DeleteOutline,
-                            contentDescription = "Eliminar de la lista",
-                            tint = Color.White.copy(alpha = 0.45f),
-                            modifier = Modifier.size(17.dp)
-                        )
-                    }
-                }
             }
 
             // Progreso
@@ -333,12 +299,45 @@ fun VideoHistoryCard(
                 }
             }
 
-            // Acción de reproducir
+            // Barra inferior con acciones de gestión y reproducción
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End,
+                horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    IconButton(
+                        onClick = onRename,
+                        modifier = Modifier
+                            .size(36.dp)
+                            .testTag("rename_video_${video.id}")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Edit,
+                            contentDescription = "Modificar nombre del video",
+                            tint = Color(0xFF38BDF8).copy(alpha = 0.85f),
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+
+                    IconButton(
+                        onClick = onDelete,
+                        modifier = Modifier
+                            .size(36.dp)
+                            .testTag("delete_video_${video.id}")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.DeleteOutline,
+                            contentDescription = "Eliminar de la lista",
+                            tint = Color.White.copy(alpha = 0.45f),
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
+
                 TextButton(
                     onClick = onPlay,
                     modifier = Modifier.testTag("play_video_button_${video.id}")

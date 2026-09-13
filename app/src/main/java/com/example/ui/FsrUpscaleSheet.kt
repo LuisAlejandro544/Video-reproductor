@@ -1,7 +1,9 @@
 package com.example.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -11,6 +13,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -36,6 +39,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.opengl.VideoEqualizerState
@@ -195,14 +199,20 @@ fun FsrUpscaleSheet(
                                 style = MaterialTheme.typography.bodySmall.copy(
                                     color = Color.White.copy(alpha = 0.9f),
                                     fontWeight = FontWeight.Medium
-                                )
+                                ),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f, fill = false)
                             )
+                            Spacer(modifier = Modifier.width(8.dp))
                             Text(
                                 text = "${(state.fsrSharpness * 100).roundToInt()}%" + if (state.fsrSharpness in 0.73f..0.77f) " (Óptimo)" else "",
                                 style = MaterialTheme.typography.bodySmall.copy(
                                     color = Color(0xFFFB7185),
                                     fontWeight = FontWeight.Bold
-                                )
+                                ),
+                                maxLines = 1,
+                                softWrap = false
                             )
                         }
 
@@ -210,14 +220,30 @@ fun FsrUpscaleSheet(
                             value = state.fsrSharpness,
                             onValueChange = { onStateChange(state.copy(fsrSharpness = it)) },
                             valueRange = 0.0f..1.0f,
-                            colors = SliderDefaults.colors(
-                                thumbColor = Color(0xFFFB7185),
-                                activeTrackColor = Color(0xFFE11D48),
-                                inactiveTrackColor = Color.White.copy(alpha = 0.15f)
-                            ),
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .testTag("slider_fsr_sharpness_exclusive")
+                                .height(32.dp)
+                                .testTag("slider_fsr_sharpness_exclusive"),
+                            thumb = {
+                                Box(
+                                    modifier = Modifier
+                                        .size(14.dp)
+                                        .background(Color.White, CircleShape)
+                                        .border(2.dp, Color(0xFFFB7185), CircleShape)
+                                )
+                            },
+                            track = { sliderState ->
+                                SliderDefaults.Track(
+                                    sliderState = sliderState,
+                                    modifier = Modifier.height(4.dp),
+                                    colors = SliderDefaults.colors(
+                                        activeTrackColor = Color(0xFFE11D48),
+                                        inactiveTrackColor = Color.White.copy(alpha = 0.15f)
+                                    ),
+                                    drawStopIndicator = null,
+                                    thumbTrackGapSize = 0.dp
+                                )
+                            }
                         )
                     }
                 }

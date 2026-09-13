@@ -2,7 +2,9 @@ package com.example.ui.player
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,6 +17,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -33,6 +36,7 @@ import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.VolumeOff
 import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material.icons.filled.Widgets
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -156,7 +160,8 @@ fun TopControlsBar(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(start = 48.dp),
+                        .padding(start = 48.dp)
+                        .horizontalScroll(rememberScrollState()),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
@@ -456,6 +461,7 @@ fun CenterPlaybackControls(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BottomControlsBar(
     currentPositionMs: Long,
@@ -479,11 +485,11 @@ fun BottomControlsBar(
             .fillMaxWidth()
             .background(
                 Brush.verticalGradient(
-                    colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.9f))
+                    colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.92f))
                 )
             )
             .navigationBarsPadding()
-            .padding(horizontal = 16.dp, vertical = 12.dp)
+            .padding(horizontal = 16.dp, vertical = 10.dp)
     ) {
         Column(
             modifier = Modifier.fillMaxWidth(),
@@ -500,15 +506,30 @@ fun BottomControlsBar(
                     onSeekChanged(newProgress)
                 },
                 onValueChangeFinished = onSeekFinished,
-                colors = SliderDefaults.colors(
-                    thumbColor = MaterialTheme.colorScheme.primary,
-                    activeTrackColor = MaterialTheme.colorScheme.primary,
-                    inactiveTrackColor = Color.White.copy(alpha = 0.3f)
-                ),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(24.dp)
-                    .testTag("player_timeline_slider")
+                    .height(32.dp)
+                    .testTag("player_timeline_slider"),
+                thumb = {
+                    Box(
+                        modifier = Modifier
+                            .size(14.dp)
+                            .background(Color.White, CircleShape)
+                            .border(2.dp, Color(0xFF38BDF8), CircleShape)
+                    )
+                },
+                track = { sliderState ->
+                    SliderDefaults.Track(
+                        sliderState = sliderState,
+                        modifier = Modifier.height(4.dp),
+                        colors = SliderDefaults.colors(
+                            activeTrackColor = Color(0xFF38BDF8),
+                            inactiveTrackColor = Color.White.copy(alpha = 0.28f)
+                        ),
+                        drawStopIndicator = null,
+                        thumbTrackGapSize = 0.dp
+                    )
+                }
             )
 
             Row(
@@ -518,7 +539,7 @@ fun BottomControlsBar(
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     Text(
                         text = VideoUtils.formatDuration(currentPositionMs),
@@ -529,7 +550,7 @@ fun BottomControlsBar(
                     )
                     Text(
                         text = "/",
-                        style = MaterialTheme.typography.bodySmall.copy(color = Color.White.copy(alpha = 0.6f))
+                        style = MaterialTheme.typography.bodySmall.copy(color = Color.White.copy(alpha = 0.5f))
                     )
                     Text(
                         text = VideoUtils.formatDuration(totalDurationMs),
@@ -541,7 +562,8 @@ fun BottomControlsBar(
 
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    modifier = Modifier.horizontalScroll(rememberScrollState())
                 ) {
                     Surface(
                         shape = RoundedCornerShape(8.dp),
@@ -556,22 +578,24 @@ fun BottomControlsBar(
                             .testTag("player_speed_button")
                     ) {
                         Row(
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
+                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 4.dp),
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            horizontalArrangement = Arrangement.spacedBy(3.dp)
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Speed,
                                 contentDescription = "Velocidad de reproducción",
                                 tint = if (playbackSpeed != 1.0f) MaterialTheme.colorScheme.primary else Color.White,
-                                modifier = Modifier.size(15.dp)
+                                modifier = Modifier.size(14.dp)
                             )
                             Text(
                                 text = "${playbackSpeed}x",
                                 style = MaterialTheme.typography.labelSmall.copy(
                                     fontWeight = FontWeight.Bold,
                                     color = if (playbackSpeed != 1.0f) MaterialTheme.colorScheme.primary else Color.White
-                                )
+                                ),
+                                maxLines = 1,
+                                softWrap = false
                             )
                         }
                     }
@@ -589,22 +613,24 @@ fun BottomControlsBar(
                             .testTag("player_equalizer_button")
                     ) {
                         Row(
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
+                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 4.dp),
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            horizontalArrangement = Arrangement.spacedBy(3.dp)
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Tune,
                                 contentDescription = "Ecualizador de video",
                                 tint = if (hasActiveEqualizer) Color(0xFF38BDF8) else Color.White,
-                                modifier = Modifier.size(15.dp)
+                                modifier = Modifier.size(14.dp)
                             )
                             Text(
-                                text = if (hasActiveEqualizer) "EQ Activo" else "EQ Video",
+                                text = if (hasActiveEqualizer) "EQ On" else "EQ",
                                 style = MaterialTheme.typography.labelSmall.copy(
                                     fontWeight = FontWeight.Bold,
                                     color = if (hasActiveEqualizer) Color(0xFF38BDF8) else Color.White
-                                )
+                                ),
+                                maxLines = 1,
+                                softWrap = false
                             )
                         }
                     }
@@ -622,22 +648,24 @@ fun BottomControlsBar(
                             .testTag("player_subtitles_button")
                     ) {
                         Row(
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
+                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 4.dp),
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            horizontalArrangement = Arrangement.spacedBy(3.dp)
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Subtitles,
                                 contentDescription = "Subtítulos",
                                 tint = if (hasActiveSubtitles) Color(0xFF34D399) else Color.White,
-                                modifier = Modifier.size(15.dp)
+                                modifier = Modifier.size(14.dp)
                             )
                             Text(
                                 text = if (hasActiveSubtitles) "CC On" else "CC",
                                 style = MaterialTheme.typography.labelSmall.copy(
                                     fontWeight = FontWeight.Bold,
                                     color = if (hasActiveSubtitles) Color(0xFF34D399) else Color.White
-                                )
+                                ),
+                                maxLines = 1,
+                                softWrap = false
                             )
                         }
                     }
@@ -652,34 +680,39 @@ fun BottomControlsBar(
                             .testTag("player_tools_button")
                     ) {
                         Row(
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
+                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 4.dp),
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            horizontalArrangement = Arrangement.spacedBy(3.dp)
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Widgets,
                                 contentDescription = "Herramientas del reproductor",
                                 tint = Color.White,
-                                modifier = Modifier.size(15.dp)
+                                modifier = Modifier.size(14.dp)
                             )
                             Text(
                                 text = "Herramientas",
                                 style = MaterialTheme.typography.labelSmall.copy(
                                     fontWeight = FontWeight.Bold,
                                     color = Color.White
-                                )
+                                ),
+                                maxLines = 1,
+                                softWrap = false
                             )
                         }
                     }
 
                     IconButton(
                         onClick = onToggleMute,
-                        modifier = Modifier.testTag("player_mute_button")
+                        modifier = Modifier
+                            .size(32.dp)
+                            .testTag("player_mute_button")
                     ) {
                         Icon(
                             imageVector = if (isMuted) Icons.Default.VolumeOff else Icons.Default.VolumeUp,
                             contentDescription = if (isMuted) "Activar sonido" else "Silenciar",
-                            tint = Color.White
+                            tint = Color.White,
+                            modifier = Modifier.size(18.dp)
                         )
                     }
                 }

@@ -1,8 +1,10 @@
 package com.example.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -12,6 +14,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -271,17 +274,32 @@ fun Anime4KSheet(
                 },
                 valueRange = 0.1f..1.0f,
                 enabled = isEnabled,
-                colors = SliderDefaults.colors(
-                    thumbColor = Color(0xFFA78BFA),
-                    activeTrackColor = Color(0xFF8B5CF6),
-                    inactiveTrackColor = Color(0xFF272F45),
-                    disabledThumbColor = Color(0xFF64748B),
-                    disabledActiveTrackColor = Color(0xFF334155),
-                    disabledInactiveTrackColor = Color(0xFF1E293B)
-                ),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .testTag("anime4k_strength_slider")
+                    .height(32.dp)
+                    .testTag("anime4k_strength_slider"),
+                thumb = {
+                    Box(
+                        modifier = Modifier
+                            .size(14.dp)
+                            .background(Color.White, CircleShape)
+                            .border(2.dp, if (isEnabled) Color(0xFFA78BFA) else Color(0xFF64748B), CircleShape)
+                    )
+                },
+                track = { sliderState ->
+                    SliderDefaults.Track(
+                        sliderState = sliderState,
+                        modifier = Modifier.height(4.dp),
+                        colors = SliderDefaults.colors(
+                            activeTrackColor = Color(0xFF8B5CF6),
+                            inactiveTrackColor = Color(0xFF272F45),
+                            disabledActiveTrackColor = Color(0xFF334155),
+                            disabledInactiveTrackColor = Color(0xFF1E293B)
+                        ),
+                        drawStopIndicator = null,
+                        thumbTrackGapSize = 0.dp
+                    )
+                }
             )
 
             Spacer(modifier = Modifier.height(16.dp))

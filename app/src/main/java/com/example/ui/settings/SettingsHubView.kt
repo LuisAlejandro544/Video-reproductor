@@ -43,6 +43,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.audio.AudioChannelMode
@@ -123,7 +124,7 @@ fun SettingsHubView(
                 iconTint = Color(0xFF38BDF8),
                 title = "Motor de Audio",
                 subtitle = "Alternar entre Google Oboe C++ y Android Media3",
-                badge = selectedEngine.title,
+                badge = if (selectedEngine == AudioEngineType.OBOE) "Oboe C++" else "Media3",
                 testTag = "settings_item_audio_engine",
                 onClick = { onNavigateTo(SettingsSubScreen.AUDIO_ENGINE) }
             )
@@ -133,7 +134,11 @@ fun SettingsHubView(
                 iconTint = Color(0xFF00E5FF),
                 title = "Canales de Audio (Estéreo / Mono)",
                 subtitle = "Conversión a estéreo, mono centrado o efecto Haas 3D",
-                badge = currentChannelMode.title,
+                badge = when (currentChannelMode) {
+                    AudioChannelMode.STEREO -> "Estéreo"
+                    AudioChannelMode.MONO -> "Mono"
+                    AudioChannelMode.SPATIAL_HAAS -> "Haas 3D"
+                },
                 testTag = "settings_item_audio_channels",
                 onClick = { onNavigateTo(SettingsSubScreen.AUDIO_CHANNELS) }
             )
@@ -143,7 +148,7 @@ fun SettingsHubView(
                 iconTint = Color(0xFF10B981),
                 title = "Prueba de Sonido",
                 subtitle = "Sintetizador senoidal 440 Hz para verificación física",
-                badge = "Prueba PCM",
+                badge = "440 Hz PCM",
                 testTag = "settings_item_audio_test",
                 onClick = { onNavigateTo(SettingsSubScreen.AUDIO_TEST) }
             )
@@ -164,7 +169,7 @@ fun SettingsHubView(
                 iconTint = Color(0xFFA855F7),
                 title = "Telemetría y Rendimiento",
                 subtitle = "Monitoreo en tiempo real de tramas C++, buffers y RAM",
-                badge = if (sampleRate > 0) "$sampleRate Hz" else "Activo",
+                badge = if (sampleRate > 0) "${sampleRate / 1000} kHz" else "Activo",
                 testTag = "settings_item_telemetry",
                 onClick = { onNavigateTo(SettingsSubScreen.TELEMETRY) }
             )
@@ -174,7 +179,7 @@ fun SettingsHubView(
                 iconTint = Color(0xFFF59E0B),
                 title = "Arquitectura y Distribución",
                 subtitle = "Compatibilidad 32/64 bits, Android Go y distribución APK",
-                badge = "Uptodown",
+                badge = "APK / Uptodown",
                 testTag = "settings_item_about",
                 onClick = { onNavigateTo(SettingsSubScreen.ABOUT) }
             )
@@ -184,6 +189,7 @@ fun SettingsHubView(
 
 /**
  * Tarjeta interactiva de acceso para cada pantalla de configuración.
+ * Diseño robusto con protección contra wrapping indebido en pantallas estrechas.
  */
 @Composable
 fun SettingsNavigationCard(
@@ -208,7 +214,7 @@ fun SettingsNavigationCard(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
+                .padding(horizontal = 16.dp, vertical = 14.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Surface(
@@ -228,42 +234,53 @@ fun SettingsNavigationCard(
 
             Spacer(modifier = Modifier.width(14.dp))
 
-            Column(modifier = Modifier.weight(1f)) {
+            Column(
+                modifier = Modifier.weight(1f)
+            ) {
                 Row(
+                    modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Text(
                         text = title,
                         fontSize = 15.sp,
                         fontWeight = FontWeight.SemiBold,
-                        color = Color.White
+                        color = Color.White,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false)
                     )
-                    badge?.let {
+                    badge?.let { badgeText ->
+                        Spacer(modifier = Modifier.width(8.dp))
                         Surface(
                             shape = RoundedCornerShape(6.dp),
                             color = iconTint.copy(alpha = 0.20f)
                         ) {
                             Text(
-                                text = it,
-                                fontSize = 10.sp,
+                                text = badgeText,
+                                fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = iconTint,
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                maxLines = 1,
+                                softWrap = false,
+                                modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
                             )
                         }
                     }
                 }
-                Spacer(modifier = Modifier.height(3.dp))
+                Spacer(modifier = Modifier.height(4.dp))
                 Text(
                     text = subtitle,
                     fontSize = 12.sp,
-                    color = Color.White.copy(alpha = 0.60f),
-                    lineHeight = 16.sp
+                    color = Color.White.copy(alpha = 0.65f),
+                    lineHeight = 16.sp,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
                 )
             }
 
-            Spacer(modifier = Modifier.width(8.dp))
+            Spacer(modifier = Modifier.width(10.dp))
 
             Icon(
                 imageVector = Icons.AutoMirrored.Filled.ArrowForwardIos,

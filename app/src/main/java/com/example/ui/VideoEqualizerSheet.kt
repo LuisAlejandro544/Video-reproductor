@@ -1,7 +1,9 @@
 package com.example.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -13,6 +15,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -45,6 +48,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.opengl.VideoEqualizerState
@@ -254,6 +258,7 @@ fun VideoEqualizerSheet(
 /**
  * Fila reutilizable para un deslizador del ecualizador de video.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun EqualizerSliderRow(
     icon: ImageVector,
@@ -277,7 +282,8 @@ private fun EqualizerSliderRow(
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.weight(1f, fill = false)
             ) {
                 Icon(
                     imageVector = icon,
@@ -290,15 +296,20 @@ private fun EqualizerSliderRow(
                     style = MaterialTheme.typography.bodyMedium.copy(
                         color = Color.White,
                         fontWeight = FontWeight.Medium
-                    )
+                    ),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
             }
+            Spacer(modifier = Modifier.width(8.dp))
             Text(
                 text = valueText,
                 style = MaterialTheme.typography.labelMedium.copy(
                     fontWeight = FontWeight.Bold,
                     color = Color(0xFF38BDF8)
-                )
+                ),
+                maxLines = 1,
+                softWrap = false
             )
         }
 
@@ -306,14 +317,30 @@ private fun EqualizerSliderRow(
             value = value,
             onValueChange = onValueChange,
             valueRange = valueRange,
-            colors = SliderDefaults.colors(
-                thumbColor = MaterialTheme.colorScheme.primary,
-                activeTrackColor = MaterialTheme.colorScheme.primary,
-                inactiveTrackColor = Color.White.copy(alpha = 0.2f)
-            ),
             modifier = Modifier
                 .fillMaxWidth()
-                .testTag(testTag)
+                .height(32.dp)
+                .testTag(testTag),
+            thumb = {
+                Box(
+                    modifier = Modifier
+                        .size(14.dp)
+                        .background(Color.White, CircleShape)
+                        .border(2.dp, Color(0xFF38BDF8), CircleShape)
+                )
+            },
+            track = { sliderState ->
+                SliderDefaults.Track(
+                    sliderState = sliderState,
+                    modifier = Modifier.height(4.dp),
+                    colors = SliderDefaults.colors(
+                        activeTrackColor = Color(0xFF38BDF8),
+                        inactiveTrackColor = Color.White.copy(alpha = 0.2f)
+                    ),
+                    drawStopIndicator = null,
+                    thumbTrackGapSize = 0.dp
+                )
+            }
         )
     }
 }

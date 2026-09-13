@@ -34,6 +34,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.audio.AudioEngineType
@@ -168,12 +169,15 @@ fun AudioEngineBanner(
             }
 
             Column(modifier = Modifier.weight(1f)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
                     Text(
-                        text = "Motor Activo:",
-                        style = MaterialTheme.typography.labelSmall.copy(color = Color.White.copy(alpha = 0.65f))
+                        text = "Motor:",
+                        style = MaterialTheme.typography.labelSmall.copy(color = Color.White.copy(alpha = 0.65f)),
+                        maxLines = 1
                     )
-                    Spacer(modifier = Modifier.width(6.dp))
                     Surface(
                         shape = RoundedCornerShape(4.dp),
                         color = if (selectedAudioEngine == AudioEngineType.OBOE) Color(0xFF10B981).copy(alpha = 0.25f)
@@ -185,6 +189,8 @@ fun AudioEngineBanner(
                                 fontWeight = FontWeight.Bold,
                                 color = if (selectedAudioEngine == AudioEngineType.OBOE) Color(0xFF34D399) else Color.White
                             ),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                         )
                     }
@@ -198,7 +204,9 @@ fun AudioEngineBanner(
                     style = MaterialTheme.typography.bodySmall.copy(
                         color = Color.White.copy(alpha = 0.7f),
                         fontSize = 11.sp
-                    )
+                    ),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
             }
 

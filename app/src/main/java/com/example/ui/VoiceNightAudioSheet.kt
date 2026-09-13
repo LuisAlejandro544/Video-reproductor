@@ -1,6 +1,8 @@
 package com.example.ui
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -13,6 +15,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -336,12 +339,29 @@ fun VoiceNightAudioSheet(
                             },
                             valueRange = 0.1f..1.0f,
                             steps = 9,
-                            colors = SliderDefaults.colors(
-                                thumbColor = Color(0xFF8B5CF6),
-                                activeTrackColor = Color(0xFF8B5CF6),
-                                inactiveTrackColor = Color(0xFF33333C)
-                            ),
-                            modifier = Modifier.fillMaxWidth()
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(32.dp),
+                            thumb = {
+                                Box(
+                                    modifier = Modifier
+                                        .size(14.dp)
+                                        .background(Color.White, CircleShape)
+                                        .border(2.dp, Color(0xFF8B5CF6), CircleShape)
+                                )
+                            },
+                            track = { sliderState ->
+                                SliderDefaults.Track(
+                                    sliderState = sliderState,
+                                    modifier = Modifier.height(4.dp),
+                                    colors = SliderDefaults.colors(
+                                        activeTrackColor = Color(0xFF8B5CF6),
+                                        inactiveTrackColor = Color(0xFF33333C)
+                                    ),
+                                    drawStopIndicator = null,
+                                    thumbTrackGapSize = 0.dp
+                                )
+                            }
                         )
                     }
                 }
@@ -446,12 +466,29 @@ fun VoiceNightAudioSheet(
                             },
                             valueRange = 0.2f..1.0f,
                             steps = 8,
-                            colors = SliderDefaults.colors(
-                                thumbColor = Color(0xFF38BDF8),
-                                activeTrackColor = Color(0xFF38BDF8),
-                                inactiveTrackColor = Color(0xFF33333C)
-                            ),
-                            modifier = Modifier.fillMaxWidth()
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(32.dp),
+                            thumb = {
+                                Box(
+                                    modifier = Modifier
+                                        .size(14.dp)
+                                        .background(Color.White, CircleShape)
+                                        .border(2.dp, Color(0xFF38BDF8), CircleShape)
+                                )
+                            },
+                            track = { sliderState ->
+                                SliderDefaults.Track(
+                                    sliderState = sliderState,
+                                    modifier = Modifier.height(4.dp),
+                                    colors = SliderDefaults.colors(
+                                        activeTrackColor = Color(0xFF38BDF8),
+                                        inactiveTrackColor = Color(0xFF33333C)
+                                    ),
+                                    drawStopIndicator = null,
+                                    thumbTrackGapSize = 0.dp
+                                )
+                            }
                         )
                     }
                 }
