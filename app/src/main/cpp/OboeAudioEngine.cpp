@@ -23,11 +23,14 @@ OboeAudioEngine::OboeAudioEngine()
     , mVoiceClarityGain(0.75f)
     , mEnvelope(0.0f)
     , mVoicePrevLowPass(0.0f)
+    , mChannelMode(0)
+    , mHaasIndex(0)
     , mWriteIndex(0)
     , mReadIndex(0)
     , mAvailableSamples(0)
     , mFramesWritten(0) {
     mRingBuffer.assign(RING_BUFFER_CAPACITY, 0);
+    mHaasBuffer.assign(1024, 0.0f);
 }
 
 OboeAudioEngine::~OboeAudioEngine() {
@@ -188,6 +191,12 @@ void OboeAudioEngine::setVoiceClarity(bool enabled, float gain) {
     LOGI("Modo Voces Claras: %s (Ganancia: %.2f)", enabled ? "ON" : "OFF", mVoiceClarityGain);
 }
 
+void OboeAudioEngine::setChannelMode(int32_t mode) {
+    std::lock_guard<std::mutex> lock(mBufferMutex);
+    mChannelMode = mode;
+    LOGI("Modo de Canales Oboe cambiado a: %d (0=Estéreo, 1=Mono, 2=Pseudo-Estéreo Haas)", mode);
+}
+
 bool OboeAudioEngine::isPlaying() const {
     return mIsPlaying;
 }
@@ -231,44 +240,123 @@ oboe::DataCallbackResult OboeAudioEngine::onAudioReady(
     // Compensación de volumen maestro (1.40f) para igualar sonoridad con AudioTrack de Media3
     const float masterGain = mVolume * 1.40f;
 
-    for (size_t i = 0; i < samplesToCopy; ++i) {
-        int16_t rawSample = mRingBuffer[(mReadIndex + i) % RING_BUFFER_CAPACITY];
-        float sample = static_cast<float>(rawSample) * masterGain;
+    // Retardo acústico interaural (~16 ms) para el algoritmo Haas de espacialización
+    const size_t haasDelaySamples = (mSampleRate > 0) ? static_cast<size_t>(mSampleRate * 0.016f) : 768;
 
-        // 1. Realce de Diálogos / Voces Claras (Peaking en banda vocal 1.5 kHz - 3.5 kHz)
-        if (mVoiceClarityEnabled && mVoiceClarityGain > 0.01f) {
-            float lowPass = 0.72f * mVoicePrevLowPass + 0.28f * sample;
-            mVoicePrevLowPass = lowPass;
-            float voiceBand = sample - lowPass;
-            sample += voiceBand * (mVoiceClarityGain * 1.35f);
-        }
+    if (mChannelCount == 2) {
+        // Procesamiento en pares de tramas (Izquierda y Derecha)
+        size_t framesToCopy = samplesToCopy / 2;
+        for (size_t f = 0; f < framesToCopy; ++f) {
+            size_t idxL = (mReadIndex + f * 2) % RING_BUFFER_CAPACITY;
+            size_t idxR = (mReadIndex + f * 2 + 1) % RING_BUFFER_CAPACITY;
 
-        // 2. Compresor Dinámico / Modo Nocturno (DRC - atenúa picos/explosiones, eleva susurros)
-        if (mCompressorEnabled && mCompressorIntensity > 0.01f) {
-            float absSample = std::abs(sample);
-            if (absSample > mEnvelope) {
-                mEnvelope = 0.08f * absSample + 0.92f * mEnvelope;
-            } else {
-                mEnvelope = 0.002f * absSample + 0.998f * mEnvelope;
+            float sampleL = static_cast<float>(mRingBuffer[idxL]) * masterGain;
+            float sampleR = static_cast<float>(mRingBuffer[idxR]) * masterGain;
+
+            // 0. Enrutamiento Estéreo / Mono / Pseudo-Estéreo Haas en tiempo real
+            if (mChannelMode == 1) {
+                // Modo Mono Combinado: Suma y centra en ambos canales ((L + R) / 2)
+                float mono = (sampleL + sampleR) * 0.5f;
+                sampleL = mono;
+                sampleR = mono;
+            } else if (mChannelMode == 2) {
+                // Modo Pseudo-Estéreo Espacial Haas: Crea apertura tridimensional en mono/estéreo plano
+                float mono = (sampleL + sampleR) * 0.5f;
+                float delayed = (mHaasIndex < mHaasBuffer.size()) ? mHaasBuffer[mHaasIndex] : 0.0f;
+                if (mHaasIndex < mHaasBuffer.size()) {
+                    mHaasBuffer[mHaasIndex] = mono;
+                }
+                size_t bufferLimit = std::min(mHaasBuffer.size(), haasDelaySamples);
+                if (bufferLimit > 0) {
+                    mHaasIndex = (mHaasIndex + 1) % bufferLimit;
+                }
+
+                // Canal izquierdo señal directa; canal derecho con desfase psicoacústico
+                sampleL = mono * 1.05f;
+                sampleR = delayed * 0.90f + mono * 0.15f;
             }
 
-            float threshold = 9500.0f * (1.0f - mCompressorIntensity * 0.35f);
-            if (mEnvelope > threshold) {
-                float excess = mEnvelope - threshold;
-                float ratio = 3.5f + mCompressorIntensity * 4.5f;
-                float compressedEnvelope = threshold + (excess / ratio);
-                float gainReduction = compressedEnvelope / std::max(1.0f, mEnvelope);
-                sample *= gainReduction;
-            } else if (mEnvelope > 80.0f && mEnvelope < threshold * 0.45f) {
-                float quietBoost = 1.0f + (mCompressorIntensity * 0.65f) * (1.0f - (mEnvelope / (threshold * 0.45f)));
-                sample *= quietBoost;
+            // 1. Realce de Diálogos / Voces Claras (Peaking en banda vocal 1.5 kHz - 3.5 kHz)
+            if (mVoiceClarityEnabled && mVoiceClarityGain > 0.01f) {
+                float avgSample = (sampleL + sampleR) * 0.5f;
+                float lowPass = 0.72f * mVoicePrevLowPass + 0.28f * avgSample;
+                mVoicePrevLowPass = lowPass;
+                float voiceBand = avgSample - lowPass;
+                float boost = voiceBand * (mVoiceClarityGain * 1.35f);
+                sampleL += boost;
+                sampleR += boost;
             }
-        }
 
-        // Clamp a 16-bit signed integer con protección suave contra distorsión
-        sample = std::max(-32767.0f, std::min(32767.0f, sample));
-        outputBuffer[i] = static_cast<int16_t>(sample);
+            // 2. Compresor Dinámico / Modo Nocturno (DRC - atenúa picos/explosiones, eleva susurros)
+            if (mCompressorEnabled && mCompressorIntensity > 0.01f) {
+                float maxSample = std::max(std::abs(sampleL), std::abs(sampleR));
+                if (maxSample > mEnvelope) {
+                    mEnvelope = 0.08f * maxSample + 0.92f * mEnvelope;
+                } else {
+                    mEnvelope = 0.002f * maxSample + 0.998f * mEnvelope;
+                }
+
+                float threshold = 9500.0f * (1.0f - mCompressorIntensity * 0.35f);
+                if (mEnvelope > threshold) {
+                    float excess = mEnvelope - threshold;
+                    float ratio = 3.5f + mCompressorIntensity * 4.5f;
+                    float compressedEnvelope = threshold + (excess / ratio);
+                    float gainReduction = compressedEnvelope / std::max(1.0f, mEnvelope);
+                    sampleL *= gainReduction;
+                    sampleR *= gainReduction;
+                } else if (mEnvelope > 80.0f && mEnvelope < threshold * 0.45f) {
+                    float quietBoost = 1.0f + (mCompressorIntensity * 0.65f) * (1.0f - (mEnvelope / (threshold * 0.45f)));
+                    sampleL *= quietBoost;
+                    sampleR *= quietBoost;
+                }
+            }
+
+            // Clamp con protección contra clipping digital a 16 bits
+            sampleL = std::max(-32767.0f, std::min(32767.0f, sampleL));
+            sampleR = std::max(-32767.0f, std::min(32767.0f, sampleR));
+
+            outputBuffer[f * 2] = static_cast<int16_t>(sampleL);
+            outputBuffer[f * 2 + 1] = static_cast<int16_t>(sampleR);
+        }
+    } else {
+        // Modo Mono nativo (1 canal)
+        for (size_t i = 0; i < samplesToCopy; ++i) {
+            int16_t rawSample = mRingBuffer[(mReadIndex + i) % RING_BUFFER_CAPACITY];
+            float sample = static_cast<float>(rawSample) * masterGain;
+
+            if (mVoiceClarityEnabled && mVoiceClarityGain > 0.01f) {
+                float lowPass = 0.72f * mVoicePrevLowPass + 0.28f * sample;
+                mVoicePrevLowPass = lowPass;
+                float voiceBand = sample - lowPass;
+                sample += voiceBand * (mVoiceClarityGain * 1.35f);
+            }
+
+            if (mCompressorEnabled && mCompressorIntensity > 0.01f) {
+                float absSample = std::abs(sample);
+                if (absSample > mEnvelope) {
+                    mEnvelope = 0.08f * absSample + 0.92f * mEnvelope;
+                } else {
+                    mEnvelope = 0.002f * absSample + 0.998f * mEnvelope;
+                }
+
+                float threshold = 9500.0f * (1.0f - mCompressorIntensity * 0.35f);
+                if (mEnvelope > threshold) {
+                    float excess = mEnvelope - threshold;
+                    float ratio = 3.5f + mCompressorIntensity * 4.5f;
+                    float compressedEnvelope = threshold + (excess / ratio);
+                    float gainReduction = compressedEnvelope / std::max(1.0f, mEnvelope);
+                    sample *= gainReduction;
+                } else if (mEnvelope > 80.0f && mEnvelope < threshold * 0.45f) {
+                    float quietBoost = 1.0f + (mCompressorIntensity * 0.65f) * (1.0f - (mEnvelope / (threshold * 0.45f)));
+                    sample *= quietBoost;
+                }
+            }
+
+            sample = std::max(-32767.0f, std::min(32767.0f, sample));
+            outputBuffer[i] = static_cast<int16_t>(sample);
+        }
     }
+
     mReadIndex = (mReadIndex + samplesToCopy) % RING_BUFFER_CAPACITY;
     mAvailableSamples -= samplesToCopy;
 

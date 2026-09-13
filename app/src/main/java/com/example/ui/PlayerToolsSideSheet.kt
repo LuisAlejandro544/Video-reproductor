@@ -33,6 +33,7 @@ import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.BlurOn
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.GraphicEq
+import androidx.compose.material.icons.filled.Headphones
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Subtitles
@@ -67,6 +68,7 @@ enum class PlayerToolItem {
     PILLARBOX_BLUR,
     FSR_SUPER_RESOLUTION,
     VOICE_NIGHT_AUDIO,
+    STEREO_MONO,
     AUDIO_ENGINE,
     SUBTITLES,
     ASPECT_RATIO
@@ -261,7 +263,19 @@ fun PlayerToolsSideSheet(
                             }
                         )
 
-                        // 8. Motor de Audio
+                        // 8. Canales de Audio (Estéreo / Mono / Pseudo-Estéreo Haas)
+                        ToolMenuItem(
+                            icon = Icons.Default.Headphones,
+                            label = "Estéreo / Mono",
+                            description = "Alternar estéreo, mono o pseudo-estéreo 3D",
+                            testTag = "tool_item_stereo_mono",
+                            onClick = {
+                                onDismiss()
+                                onSelectTool(PlayerToolItem.STEREO_MONO)
+                            }
+                        )
+
+                        // 9. Motor de Audio
                         ToolMenuItem(
                             icon = Icons.Default.Audiotrack,
                             label = "Motor de audio",

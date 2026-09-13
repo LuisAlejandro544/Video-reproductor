@@ -86,6 +86,7 @@ fun MainVideoApp(
     viewModel: MainViewModel = viewModel()
 ) {
     val context = LocalContext.current
+    val activity = context as? android.app.Activity
 
     // Observar la lista de videos importados y vistos desde la base de datos Room
     val importedVideos by viewModel.importedVideos.collectAsStateWithLifecycle()
@@ -93,6 +94,13 @@ fun MainVideoApp(
     // Destino actual y previo de navegación
     var currentScreen by remember { mutableStateOf(AppScreen.HOME) }
     var previousScreen by remember { mutableStateOf(AppScreen.HOME) }
+
+    // Bloquear en orientación vertical siempre que estemos en HOME o SETTINGS
+    androidx.compose.runtime.LaunchedEffect(currentScreen) {
+        if (currentScreen == AppScreen.HOME || currentScreen == AppScreen.SETTINGS) {
+            activity?.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+        }
+    }
 
     // Estado del motor de audio seleccionado (por defecto OBOE nativo de baja latencia)
     var selectedAudioEngine by remember { mutableStateOf(AudioEngineType.OBOE) }
@@ -176,6 +184,7 @@ fun MainVideoApp(
                             viewModel.updatePlaybackProgress(activeVideo.uri.toString(), posMs, durMs)
                         },
                         onBackToHome = {
+                            activity?.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
                             currentVideo = null
                             currentPlaybackPositionMs = 0L
                             currentScreen = AppScreen.HOME

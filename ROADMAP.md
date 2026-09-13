@@ -78,9 +78,17 @@ Este documento detalla las fases de desarrollo planificadas para convertir a **N
 - [x] **Procesamiento de Audio DSP en Tiempo Real con Google Oboe en C++:**
   - **Filtro Peaking Vocal (1.5 kHz a 3.5 kHz):** Realce inteligente de diálogos y frecuencias fonéticas clave.
   - **Compresor de Rango Dinámico (DRC):** Normalización de picos para cine nocturno (suaviza explosiones y levanta susurros).
-- [x] **Modo Sol Extremo / Accesibilidad de Alto Contraste en Shader OpenGL ES:**
-  - Elevación no lineal de tonos oscuros y rango dinámico visible para legibilidad perfecta bajo luz solar directa o personas con visión reducida.
-- [x] Componentes modulares Jetpack Compose: `OpenGLVideoSurface`, `VideoEqualizerSheet`, `SunModeSheet`, `VoiceNightAudioSheet`, `PillarboxBlurSheet`, `FsrUpscaleSheet`, `AspectRatioSheet`, `AudioEngineSheet` y `PlaybackSpeedSheet`.
+  - **Gestor de Canales en Tiempo Real (Estéreo / Mono / Pseudo-Estéreo Haas 3D):**
+    - Enrutamiento estéreo original.
+    - Conversión y duplicación de pistas mono a ambos auriculares.
+    - Modo mono centrado `(L + R) / 2`.
+    - Efecto Haas 3D con retardo interaural de 15 ms en canal derecho mediante DSP en C++.
+- [x] **Rotación Automática Forzada por Hardware (`OrientationEventListener`):**
+  - Alternancia entre modo horizontal y vertical según la posición del teléfono, incluso con el giro automático desactivado en Android.
+  - Retorno garantizado a vertical (`SCREEN_ORIENTATION_PORTRAIT`) al finalizar el video o al volver a la biblioteca principal.
+- [x] **Centro de Configuración Ergonómico Modular (`SettingsScreen`):**
+  - Reemplazo de la lista larga monolítica por una arquitectura por subpantallas independientes (Motor de Audio, Canales, Prueba de Sonido, Telemetría y Acerca de).
+- [x] Componentes modulares Jetpack Compose: `OpenGLVideoSurface`, `VideoEqualizerSheet`, `StereoMonoSheet`, `SunModeSheet`, `VoiceNightAudioSheet`, `PillarboxBlurSheet`, `FsrUpscaleSheet`, `AspectRatioSheet`, `AudioEngineSheet` y `PlaybackSpeedSheet`.
 
 ---
 

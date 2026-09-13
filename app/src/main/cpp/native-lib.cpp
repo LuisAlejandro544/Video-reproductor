@@ -174,6 +174,27 @@ Java_com_example_audio_OboeAudioEngine_nativeSetVoiceClarity(
     }
 }
 
+JNIEXPORT void JNICALL
+Java_com_example_audio_OboeAudioEngine_nativeSetChannelMode(
+    JNIEnv* env,
+    jobject /* this */,
+    jint mode
+) {
+    auto engine = getAudioEngine();
+    if (engine) {
+        engine->setChannelMode(static_cast<int32_t>(mode));
+    }
+}
+
+JNIEXPORT jint JNICALL
+Java_com_example_audio_OboeAudioEngine_nativeGetChannelMode(
+    JNIEnv* env,
+    jobject /* this */
+) {
+    auto engine = getAudioEngine();
+    return engine ? static_cast<jint>(engine->getChannelMode()) : 0;
+}
+
 JNIEXPORT jboolean JNICALL
 Java_com_example_audio_OboeAudioEngine_nativeIsPlaying(
     JNIEnv* env,

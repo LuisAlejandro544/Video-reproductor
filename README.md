@@ -12,6 +12,22 @@
 
 ## ✨ Características Principales
 
+- **Herramienta de Canales de Audio en Tiempo Real (Estéreo / Mono / Pseudo-Estéreo Haas 3D):**
+  - **Conversión Mono a Estéreo en Tiempo Real:** Corrige videos grabados con un solo micrófono o pista mono duplicando y enrutando la señal a ambos auriculares o altavoces.
+  - **Modo Mono Centrado:** Mezcla balanceada `(L + R) / 2` para balancear pistas desequilibradas o escuchar con un único auricular.
+  - **Pseudo-Estéreo Espacial Haas (DSP C++):** Algoritmo psicoacústico basado en el efecto Haas que introduce un retardo interaural calibrado de 15 ms en el canal derecho mediante búfer circular en C++, creando una sensación de espacialidad tridimensional y profundidad envolvente a partir de pistas mono o estéreo planas, sin degradar la fase acústica.
+  - Conmutación en caliente en tiempo real sin pausar el video a través de `StereoMonoSheet` y el panel de herramientas.
+- **Control Inteligente de Orientación por Sensor de Hardware (Giro Forzado Independiente):**
+  - Sensor de acelerómetro y giroscopio (`OrientationEventListener`) activo durante la reproducción:
+    - Permite que la pantalla gire a horizontal o vertical según cómo se sostenga el teléfono, **incluso si el usuario tiene desactivada la opción de 'Giro Automático' en los ajustes de Android**.
+    - Retorno automático y garantizado a orientación vertical (`SCREEN_ORIENTATION_PORTRAIT`) al terminar el video (`STATE_ENDED`), al pulsar Atrás o al regresar a la biblioteca principal.
+- **Centro de Configuración Ergonómico Modular por Pantallas Independientes (`SettingsScreen`):**
+  - Reemplazo de la vista monolítica por un menú de acceso categorizado con navegación a subpantallas dedicadas y exclusivas:
+    - **Motor de Audio:** Selección entre Google Oboe C++ y Android Media3.
+    - **Canales de Audio:** Enrutamiento estéreo, mono centrado y espacial Haas 3D.
+    - **Prueba de Sonido:** Generador senoidal PCM de 440 Hz para validación física de salida de hardware.
+    - **Telemetría y Rendimiento:** Monitoreo en tiempo real de tramas C++, buffers de memoria y perfil Android Go.
+    - **Arquitectura y Distribución:** Información de compilación 32/64 bits, licencias permisivas y portabilidad APK para Uptodown.
 - **Soporte y Gestión de Subtítulos SRT (.srt - SubRip) y WebVTT (.vtt):**
   - Renderizado en tiempo real sincronizado mediante `SubtitleView` sobre la superficie de video OpenGL.
   - Detección automática y selección de pistas de subtítulos internas integradas en contenedores MKV/MP4.

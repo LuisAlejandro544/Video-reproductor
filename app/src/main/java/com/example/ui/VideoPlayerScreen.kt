@@ -1,7 +1,10 @@
 package com.example.ui
 
 import android.app.Activity
+import android.content.pm.ActivityInfo
+import android.hardware.SensorManager
 import android.util.Log
+import android.view.OrientationEventListener
 import android.view.ViewGroup
 import android.view.WindowManager
 import androidx.activity.compose.BackHandler
@@ -121,6 +124,7 @@ import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.CaptionStyleCompat
 import androidx.media3.ui.PlayerView
 import androidx.media3.ui.SubtitleView
+import com.example.audio.AudioChannelMode
 import com.example.audio.AudioEngineType
 import com.example.audio.OboeAudioEngine
 import com.example.audio.OboeAudioProcessor
@@ -196,6 +200,15 @@ fun VideoPlayerScreen(
     var showControls by remember { mutableStateOf(true) }
     var lastInteractionTime by remember { mutableLongStateOf(System.currentTimeMillis()) }
 
+    val activity = context as? Activity
+    val view = LocalView.current
+
+    // Manejador del botón atrás físico o por gestos del sistema
+    BackHandler {
+        activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+        onBackToHome()
+    }
+
     // Modo de aspecto: FIT (ajustar), ZOOM (rellenar pantalla completa), FILL (estirar)
     var currentAspectMode by remember { mutableStateOf(AspectRatioMode.FIT) }
 
@@ -222,13 +235,15 @@ fun VideoPlayerScreen(
     var showVoiceNightSheet by remember { mutableStateOf(false) }
     var showAspectRatioSheet by remember { mutableStateOf(false) }
     var showAudioEngineSheet by remember { mutableStateOf(false) }
+    var showStereoMonoSheet by remember { mutableStateOf(false) }
+
+    // Modo de canal de audio (Estéreo / Mono / Pseudo-Estéreo Haas)
+    var audioChannelMode by remember { mutableStateOf(OboeAudioEngine.currentChannelMode) }
 
     // Interacción del usuario arrastrando la barra de progreso
     var isDraggingSlider by remember { mutableStateOf(false) }
     var sliderScrubbingPosition by remember { mutableFloatStateOf(0f) }
 
-    val activity = context as? Activity
-    val view = LocalView.current
     val coroutineScope = rememberCoroutineScope()
 
     // Control de Brillo de Pantalla (0.01f a 1.0f)
@@ -420,6 +435,47 @@ fun VideoPlayerScreen(
         }
     }
 
+    // Control de orientación mediante sensor de rotación de hardware (acelerómetro/giroscopio).
+    // Permite que la pantalla gire automáticamente a horizontal o vertical según la postura del teléfono,
+    // incluso si la opción de 'Giro Automático' de Android está desactivada por el usuario.
+    DisposableEffect(context, activity) {
+        val orientationEventListener = if (activity != null) {
+            object : OrientationEventListener(context, SensorManager.SENSOR_DELAY_NORMAL) {
+                private var lastOrientation = -1
+
+                override fun onOrientationChanged(orientation: Int) {
+                    if (orientation == ORIENTATION_UNKNOWN) return
+
+                    // Rotación física del dispositivo:
+                    // 60° a 120°  -> Horizontal inverso (Reverse Landscape)
+                    // 240° a 300° -> Horizontal estándar (Landscape)
+                    // 340° a 360° o 0° a 20° -> Vertical (Portrait)
+                    val targetOrientation = when (orientation) {
+                        in 60..120 -> ActivityInfo.SCREEN_ORIENTATION_REVERSE_LANDSCAPE
+                        in 240..300 -> ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+                        in 340..360, in 0..20 -> ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+                        else -> return
+                    }
+
+                    if (targetOrientation != lastOrientation) {
+                        lastOrientation = targetOrientation
+                        activity.requestedOrientation = targetOrientation
+                    }
+                }
+            }
+        } else null
+
+        if (orientationEventListener != null && orientationEventListener.canDetectOrientation()) {
+            orientationEventListener.enable()
+        }
+
+        onDispose {
+            orientationEventListener?.disable()
+            // Al salir de la reproducción, restablecer siempre a vertical
+            activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+        }
+    }
+
     // Escuchador de eventos de ExoPlayer
     DisposableEffect(exoPlayer) {
         val listener = object : Player.Listener {
@@ -432,6 +488,8 @@ fun VideoPlayerScreen(
                     isPlaying = exoPlayer.playWhenReady
                 } else if (playbackState == Player.STATE_ENDED) {
                     isPlaying = false
+                    // Al finalizar el video, orientar automáticamente la pantalla a vertical
+                    activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
                 }
             }
 
@@ -1041,12 +1099,26 @@ fun VideoPlayerScreen(
                     PlayerToolItem.PILLARBOX_BLUR -> showPillarboxSheet = true
                     PlayerToolItem.FSR_SUPER_RESOLUTION -> showFsrSheet = true
                     PlayerToolItem.VOICE_NIGHT_AUDIO -> showVoiceNightSheet = true
+                    PlayerToolItem.STEREO_MONO -> showStereoMonoSheet = true
                     PlayerToolItem.SUBTITLES -> showSubtitlesSheet = true
                     PlayerToolItem.ASPECT_RATIO -> showAspectRatioSheet = true
                     PlayerToolItem.AUDIO_ENGINE -> showAudioEngineSheet = true
                 }
             }
         )
+
+        // Pantalla exclusiva e independiente de Selección de Canales de Audio (Estéreo / Mono / Pseudo-Estéreo Haas)
+        if (showStereoMonoSheet) {
+            StereoMonoSheet(
+                currentMode = audioChannelMode,
+                onModeSelected = { mode ->
+                    audioChannelMode = mode
+                    oboeAudioProcessor.channelMode = mode
+                    OboeAudioEngine.setChannelMode(mode)
+                },
+                onDismiss = { showStereoMonoSheet = false }
+            )
+        }
 
         // Pantalla exclusiva e independiente del Ecualizador de Video (Color / Contraste / Brillo)
         if (showEqualizerSheet) {

@@ -44,9 +44,10 @@ Este documento detalla la organización de carpetas, responsabilidades de cada m
 │       │   │   ├── MainActivity.kt   # Actividad raíz y enrutador de pantallas
 │       │   │   │
 │       │   │   ├── audio/            # Capa de integración de audio nativo y decodificación FFmpeg
+│       │   │   │   ├── AudioChannelMode.kt    # Enum: STEREO, MONO, SPATIAL_HAAS (Efecto Haas 3D)
 │       │   │   │   ├── AudioEngineType.kt     # Enum: OBOE vs MEDIA3
 │       │   │   │   ├── OboeAudioEngine.kt     # Wrapper JNI con flush() y control de volumen/DSP nativo
-│       │   │   │   └── OboeAudioProcessor.kt  # Interceptor PCM de Media3 hacia Oboe con vaciado sincronizado en onFlush/onReset
+│       │   │   │   └── OboeAudioProcessor.kt  # Interceptor PCM de Media3 hacia Oboe con vaciado sincronizado en onFlush/onReset y conversión mono-estéreo
 │       │   │   │
 │       │   │   ├── opengl/           # Capa de renderizado acelerado por GPU
 │       │   │   │   ├── NativeVideoFilter.kt   # Puente JNI con VideoColorEngine en C++
@@ -74,12 +75,13 @@ Este documento detalla la organización de carpetas, responsabilidades de cada m
 │       │   │   │   ├── PillarboxBlurSheet.kt  # Pantalla exclusiva e independiente de desenfoque de fondo vertical (Pillarbox)
 │       │   │   │   ├── PlaybackSpeedSheet.kt  # Pantalla exclusiva e independiente de velocidad de reproducción (hasta 2x)
 │       │   │   │   ├── PlayerToolsSideSheet.kt # Panel lateral de navegación exclusiva entre herramientas
-│       │   │   │   ├── SettingsScreen.kt      # Pantalla independiente de configuración de motores, test de sonido y telemetría
+│       │   │   │   ├── SettingsScreen.kt      # Centro modular de configuración por pantallas independientes (Hub + Subpantallas dedicadas)
+│       │   │   │   ├── StereoMonoSheet.kt     # Pantalla exclusiva e independiente de enrutamiento estéreo/mono y efecto Haas 3D
 │       │   │   │   ├── SubtitlesBottomSheet.kt # Panel modal de selección de subtítulos internos/externos y tamaño tipográfico
 │       │   │   │   ├── SunModeSheet.kt        # Pantalla exclusiva e independiente de Modo Sol Extremo y Accesibilidad en GPU
 │       │   │   │   ├── VideoEqualizerSheet.kt # Pantalla exclusiva e independiente de ecualización de video (color, nitidez, descanso)
 │       │   │   │   ├── VideoImportScreen.kt   # Pantalla interactiva: biblioteca de importados, duración, progreso y selectores
-│       │   │   │   ├── VideoPlayerScreen.kt   # Pantalla de reproducción multimedia (OpenGL, modo inmersivo sin barra de estado, avance rápido 2X, gestos, HUD y subtítulos)
+│       │   │   │   ├── VideoPlayerScreen.kt   # Pantalla de reproducción multimedia (OpenGL, sensor de rotación por hardware, avance 2X y gestos)
 │       │   │   │   ├── VideoSourceDialog.kt   # Diálogo para alternar Galería / Gestor de archivos
 │       │   │   │   ├── VoiceNightAudioSheet.kt # Pantalla exclusiva e independiente de Compresor Dinámico y Voces Claras en C++
 │       │   │   │   └── theme/                 # Paleta de colores, tipografía y tema oscuro

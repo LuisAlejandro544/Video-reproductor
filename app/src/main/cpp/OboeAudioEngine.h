@@ -38,6 +38,10 @@ public:
     bool isDynamicCompressorEnabled() const { return mCompressorEnabled; }
     bool isVoiceClarityEnabled() const { return mVoiceClarityEnabled; }
 
+    // DSP: Modo de Canales en tiempo real (0 = Estéreo Nativo, 1 = Mono Combinado, 2 = Pseudo-Estéreo Haas)
+    void setChannelMode(int32_t mode);
+    int32_t getChannelMode() const { return mChannelMode; }
+
     bool isPlaying() const;
     std::string getAudioApiName() const;
     int32_t getSampleRate() const;
@@ -71,6 +75,10 @@ private:
     float mVoiceClarityGain;
     float mEnvelope;
     float mVoicePrevLowPass;
+
+    int32_t mChannelMode;             // 0 = Stereo, 1 = Mono, 2 = Spatial Haas
+    std::vector<float> mHaasBuffer;   // Buffer de retardo interaural para pseudo-estéreo
+    size_t mHaasIndex;
 
     std::mutex mBufferMutex;
     std::vector<int16_t> mRingBuffer;

@@ -141,6 +141,33 @@ object OboeAudioEngine {
         }
     }
 
+    var currentChannelMode: AudioChannelMode = AudioChannelMode.STEREO
+        private set
+
+    /**
+     * Configura en tiempo real el modo de canales (Estéreo, Mono, Pseudo-Estéreo Haas) en C++.
+     * El cambio tiene efecto inmediato en el siguiente bloque de audio sin pausas ni interrupciones.
+     */
+    fun setChannelMode(mode: AudioChannelMode) {
+        currentChannelMode = mode
+        if (!isLibraryLoaded) return
+        try {
+            nativeSetChannelMode(mode.id)
+        } catch (e: Exception) {
+            Log.e(TAG, "Excepción en nativeSetChannelMode", e)
+        }
+    }
+
+    fun getChannelMode(): AudioChannelMode {
+        if (!isLibraryLoaded) return currentChannelMode
+        return try {
+            val id = nativeGetChannelMode()
+            AudioChannelMode.fromId(id)
+        } catch (e: Exception) {
+            currentChannelMode
+        }
+    }
+
     fun isPlaying(): Boolean {
         if (!isLibraryLoaded) return false
         return try {
@@ -197,6 +224,8 @@ object OboeAudioEngine {
     private external fun nativeSetVolume(volume: Float)
     private external fun nativeSetDynamicCompressor(enabled: Boolean, intensity: Float)
     private external fun nativeSetVoiceClarity(enabled: Boolean, gain: Float)
+    private external fun nativeSetChannelMode(mode: Int)
+    private external fun nativeGetChannelMode(): Int
     private external fun nativeIsPlaying(): Boolean
     private external fun nativeGetApiName(): String
     private external fun nativeGetSampleRate(): Int

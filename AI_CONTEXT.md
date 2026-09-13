@@ -59,10 +59,26 @@ Este archivo proporciona el contexto técnico, arquitectónico y operativo neces
 - Cada componente interactivo cuenta con su identificador `Modifier.testTag(...)` para garantizar verificabilidad automatizada.
 - El ciclo de vida de la reproducción está sincronizado con `LocalLifecycleOwner.current` para pausar inmediatamente el audio y video al salir de la aplicación.
 
-### 4. Navegación y Pantalla de Configuración Independiente
+### 4. Navegación y Centro de Configuración Modular (Settings Hub)
 - La arquitectura de navegación utiliza la máquina de estados `AppScreen` (`HOME`, `PLAYER`, `SETTINGS`) en `MainActivity.kt`.
-- `SettingsScreen` es una pantalla completa e independiente (sin modales ni tarjetas emergentes) que permite alternar en caliente el motor de audio (`AudioEngineType`), ejecutar una prueba física de sonido senoidal de 440 Hz en tiempo real y supervisar telemetría JNI periódica (`getApiName`, `getSampleRate`, `getChannelCount`, `getFramesWritten`).
+- `SettingsScreen` está estructurado como un **Centro de Ajustes Modular (Hub-and-Spoke)** que organiza las configuraciones en subpantallas dedicadas y autónomas para máxima ergonomía:
+  - `AUDIO_ENGINE`: Alternancia en caliente entre Oboe C++ y Media3.
+  - `AUDIO_CHANNELS`: Enrutamiento estéreo nativo, mono centrado (L+R)/2 y pseudo-estéreo espacial (efecto Haas 3D en C++).
+  - `AUDIO_TEST`: Prueba física de sonido senoidal de 440 Hz en tiempo real para verificar el canal de audio del hardware.
+  - `TELEMETRY`: Métricas JNI y de hardware (tramas C++, backend AAudio/OpenSL ES, sample rate, buffers y memoria RAM).
+  - `ABOUT`: Información de compatibilidad 32/64 bits, Android Go y distribución directa de APK.
 - Al regresar (mediante el botón de navegación del TopAppBar o el `BackHandler` del sistema), se restaura el contexto previo y se reanuda la reproducción en la posición exacta (`currentPlaybackPositionMs`).
+
+### 4.1. Canales de Audio en Tiempo Real y Algoritmo Haas 3D (C++ / DSP)
+- Implementación en `OboeAudioEngine` y `OboeAudioProcessor` mediante el enum `AudioChannelMode`:
+  - `STEREO`: Reproducción directa de canales L y R.
+  - `MONO`: Mezcla aditiva de canales `(L + R) / 2` aplicada a ambos oídos.
+  - `SPATIAL_HAAS`: Algoritmo psicoacústico de espacialización mediante búfer de retardo de 15 ms en el canal derecho en C++, transformando señales mono o estéreo estrechas en un escenario sonoro envolvente.
+
+### 4.2. Control Inteligente de Orientación de Pantalla por Sensor de Hardware
+- `OrientationEventListener` conectado directamente al acelerómetro/giroscopio en `VideoPlayerScreen`:
+  - Detecta la postura física del dispositivo y fuerza la orientación (`SCREEN_ORIENTATION_LANDSCAPE`, `SCREEN_ORIENTATION_REVERSE_LANDSCAPE`, `SCREEN_ORIENTATION_PORTRAIT`), **incluso si el usuario tiene desactivada la rotación automática en el sistema operativo**.
+  - Garantiza retorno inmediato a vertical (`SCREEN_ORIENTATION_PORTRAIT`) al finalizar el video (`STATE_ENDED`), al salir de la pantalla o al pulsar Atrás.
 
 ### 5. Persistencia Local y Biblioteca Multimedia (Room Database)
 - Implementación de base de datos SQLite con **Room** (`AppDatabase`, `VideoDao`, `VideoEntity`).
