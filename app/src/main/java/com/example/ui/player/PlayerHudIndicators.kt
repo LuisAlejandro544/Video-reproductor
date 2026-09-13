@@ -1,5 +1,16 @@
 package com.example.ui.player
 
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -38,11 +49,18 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -71,8 +89,13 @@ enum class GestureIndicatorType {
 }
 
 /**
- * Indicador visual flotante minimalista para retroalimentación en tiempo real
+ * Indicador visual flotante dinámico y minimalista para retroalimentación en tiempo real
  * de los gestos táctiles de brillo y volumen sin invadir la reproducción.
+ *
+ * Mejoras dinámicas:
+ * - Interpolación fluida de la fracción con amortiguación suave (Spring).
+ * - Expansión adaptativa de la cápsula y efecto de rebote en extremos (0% y 100%).
+ * - Resplandor dinámico según el nivel actual de brillo o volumen.
  */
 @Composable
 fun MinimalistGestureIndicator(
@@ -80,19 +103,42 @@ fun MinimalistGestureIndicator(
     fraction: Float,
     modifier: Modifier = Modifier
 ) {
-    val percentage = (fraction.coerceIn(0f, 1f) * 100).roundToInt()
+    val clampedFraction = fraction.coerceIn(0f, 1f)
+    val animatedFraction by animateFloatAsState(
+        targetValue = clampedFraction,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioNoBouncy,
+            stiffness = Spring.StiffnessMediumLow
+        ),
+        label = "gesture_fraction_animation"
+    )
+
+    val percentage = (animatedFraction * 100).roundToInt()
     val isBrightness = type == GestureIndicatorType.BRIGHTNESS
+
+    val isExtreme = animatedFraction >= 0.98f || animatedFraction <= 0.02f
+    val iconScale by animateFloatAsState(
+        targetValue = if (isExtreme) 1.22f else 1.0f,
+        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium),
+        label = "gesture_icon_scale"
+    )
+
+    val capsuleWidth by animateDpAsState(
+        targetValue = if (isExtreme) 52.dp else 48.dp,
+        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+        label = "gesture_capsule_width"
+    )
 
     val iconVector = if (isBrightness) {
         when {
-            fraction > 0.66f -> Icons.Default.BrightnessHigh
-            fraction > 0.33f -> Icons.Default.BrightnessMedium
+            animatedFraction > 0.66f -> Icons.Default.BrightnessHigh
+            animatedFraction > 0.33f -> Icons.Default.BrightnessMedium
             else -> Icons.Default.BrightnessLow
         }
     } else {
         when {
             percentage == 0 -> Icons.Default.VolumeMute
-            fraction < 0.5f -> Icons.Default.VolumeDown
+            animatedFraction < 0.5f -> Icons.Default.VolumeDown
             else -> Icons.Default.VolumeUp
         }
     }
@@ -101,12 +147,16 @@ fun MinimalistGestureIndicator(
     val testTag = if (isBrightness) "gesture_indicator_brightness" else "gesture_indicator_volume"
 
     Surface(
-        shape = RoundedCornerShape(24.dp),
-        color = Color(0xFF141418).copy(alpha = 0.85f),
-        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.15f)),
+        shape = RoundedCornerShape(26.dp),
+        color = Color(0xFF0F121C).copy(alpha = 0.90f),
+        border = BorderStroke(
+            1.5.dp,
+            accentColor.copy(alpha = (0.25f + (animatedFraction * 0.45f)).coerceIn(0.25f, 0.70f))
+        ),
+        shadowElevation = 10.dp,
         modifier = modifier
             .testTag(testTag)
-            .width(46.dp)
+            .width(capsuleWidth)
     ) {
         Column(
             modifier = Modifier
@@ -118,30 +168,32 @@ fun MinimalistGestureIndicator(
                 imageVector = iconVector,
                 contentDescription = if (isBrightness) "Brillo de pantalla" else "Volumen multimedia",
                 tint = accentColor,
-                modifier = Modifier.size(20.dp)
+                modifier = Modifier
+                    .size(22.dp)
+                    .scale(iconScale)
             )
 
             Box(
                 modifier = Modifier
-                    .width(5.dp)
-                    .height(84.dp)
-                    .clip(RoundedCornerShape(2.5.dp))
-                    .background(Color.White.copy(alpha = 0.18f)),
+                    .width(6.dp)
+                    .height(88.dp)
+                    .clip(RoundedCornerShape(3.dp))
+                    .background(Color.White.copy(alpha = 0.16f)),
                 contentAlignment = Alignment.BottomCenter
             ) {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .fillMaxHeight(fraction.coerceIn(0.02f, 1f))
+                        .fillMaxHeight(animatedFraction.coerceIn(0.02f, 1f))
                         .background(
                             Brush.verticalGradient(
                                 colors = if (isBrightness) {
-                                    listOf(Color(0xFFFDE047), Color(0xFFEAB308))
+                                    listOf(Color(0xFFFEF08A), Color(0xFFEAB308))
                                 } else {
-                                    listOf(Color(0xFF38BDF8), Color(0xFF0284C7))
+                                    listOf(Color(0xFF7DD3FC), Color(0xFF0284C7))
                                 }
                             ),
-                            shape = RoundedCornerShape(2.5.dp)
+                            shape = RoundedCornerShape(3.dp)
                         )
                 )
             }
@@ -149,8 +201,8 @@ fun MinimalistGestureIndicator(
             Text(
                 text = "$percentage%",
                 style = MaterialTheme.typography.labelSmall.copy(
-                    fontSize = 9.sp,
-                    fontWeight = FontWeight.Bold,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.ExtraBold,
                     color = Color.White
                 )
             )
@@ -159,18 +211,42 @@ fun MinimalistGestureIndicator(
 }
 
 /**
- * Insignia flotante para el avance rápido fluido a 2X al mantener presionado.
+ * Insignia flotante dinámica para el avance rápido fluido a 2X al mantener presionado.
+ * Incorpora animación viva de pulso y resplandor continuo para transmitir aceleración.
  */
 @Composable
 fun FastForward2xBadge(
     modifier: Modifier = Modifier
 ) {
+    val infiniteTransition = rememberInfiniteTransition(label = "fast_forward_pulse")
+    val glowAlpha by infiniteTransition.animateFloat(
+        initialValue = 0.55f,
+        targetValue = 0.95f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 650, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "fast_forward_glow"
+    )
+
+    val scalePulse by infiniteTransition.animateFloat(
+        initialValue = 1.0f,
+        targetValue = 1.04f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 650, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "fast_forward_scale"
+    )
+
     Surface(
         shape = RoundedCornerShape(20.dp),
-        color = Color(0xFF0F172A).copy(alpha = 0.90f),
-        border = BorderStroke(1.dp, Color(0xFF38BDF8).copy(alpha = 0.75f)),
-        shadowElevation = 8.dp,
-        modifier = modifier.testTag("player_fast_forward_2x_badge")
+        color = Color(0xFF0F172A).copy(alpha = 0.92f),
+        border = BorderStroke(1.5.dp, Color(0xFF38BDF8).copy(alpha = glowAlpha)),
+        shadowElevation = 10.dp,
+        modifier = modifier
+            .scale(scalePulse)
+            .testTag("player_fast_forward_2x_badge")
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
@@ -202,20 +278,37 @@ fun FastForward2xBadge(
 }
 
 /**
- * Indicador HUD animado para retroalimentación de Doble Tap (+5s / -5s).
+ * Indicador HUD animado dinámico para retroalimentación de Doble Tap (+5s / -5s).
+ * Incluye efecto dinámico de rebote elástico y aura luminosa al activarse.
  */
 @Composable
 fun DoubleTapSeekIndicator(
     side: DoubleTapSeekSide,
     modifier: Modifier = Modifier
 ) {
+    var isTriggered by remember { mutableStateOf(false) }
+
+    LaunchedEffect(side) {
+        isTriggered = true
+    }
+
+    val dynamicScale by animateFloatAsState(
+        targetValue = if (isTriggered) 1.0f else 0.75f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessLow
+        ),
+        label = "double_tap_scale"
+    )
+
     Surface(
         shape = CircleShape,
-        color = Color(0xFF0F172A).copy(alpha = 0.90f),
-        border = BorderStroke(1.dp, Color(0xFF38BDF8).copy(alpha = 0.65f)),
-        shadowElevation = 12.dp,
+        color = Color(0xFF0B1120).copy(alpha = 0.92f),
+        border = BorderStroke(1.5.dp, Color(0xFF38BDF8).copy(alpha = 0.85f)),
+        shadowElevation = 14.dp,
         modifier = modifier
-            .size(76.dp)
+            .size(78.dp)
+            .scale(dynamicScale)
             .testTag(if (side == DoubleTapSeekSide.LEFT) "double_tap_rewind_indicator" else "double_tap_forward_indicator")
     ) {
         Column(
@@ -231,13 +324,13 @@ fun DoubleTapSeekIndicator(
                 },
                 contentDescription = if (side == DoubleTapSeekSide.LEFT) "Retroceder 5 segundos" else "Adelantar 5 segundos",
                 tint = Color(0xFF38BDF8),
-                modifier = Modifier.size(26.dp)
+                modifier = Modifier.size(28.dp)
             )
             Spacer(modifier = Modifier.height(2.dp))
             Text(
                 text = if (side == DoubleTapSeekSide.LEFT) "-5 seg" else "+5 seg",
                 style = MaterialTheme.typography.labelMedium.copy(
-                    fontWeight = FontWeight.Bold,
+                    fontWeight = FontWeight.ExtraBold,
                     color = Color.White,
                     fontSize = 11.sp
                 )

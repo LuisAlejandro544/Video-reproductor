@@ -14,8 +14,13 @@
 #include <string>
 #include <vector>
 #include <vulkan/vulkan.h>
+#include <android/native_window.h>
+#include <android/native_window_jni.h>
+#include <android/hardware_buffer.h>
+#include <android/hardware_buffer_jni.h>
 #include "OboeAudioEngine.h"
 #include "VideoColorEngine.h"
+#include "vulkan/VulkanVideoEngine.h"
 
 #define LOG_TAG "NovaPlayerJNI"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
@@ -26,6 +31,17 @@ static std::mutex sEngineMutex;
 
 static std::unique_ptr<VideoColorEngine> sVideoColorEngine = nullptr;
 static std::mutex sColorEngineMutex;
+
+static std::unique_ptr<VulkanVideoEngine> sVulkanVideoEngine = nullptr;
+static std::mutex sVulkanEngineMutex;
+
+static VulkanVideoEngine* getVulkanVideoEngine() {
+    std::lock_guard<std::mutex> lock(sVulkanEngineMutex);
+    if (!sVulkanVideoEngine) {
+        sVulkanVideoEngine = std::make_unique<VulkanVideoEngine>();
+    }
+    return sVulkanVideoEngine.get();
+}
 
 static OboeAudioEngine* getAudioEngine() {
     std::lock_guard<std::mutex> lock(sEngineMutex);
@@ -465,6 +481,131 @@ Java_com_example_vulkan_VulkanCapabilities_nativeQueryVulkanDriver(
 
     std::string response = "OK|" + deviceName + "|" + driverVer + "|" + extraInfo;
     return env->NewStringUTF(response.c_str());
+}
+
+// ============================================================================
+// Funciones JNI para el Motor Gráfico Vulkan 1.1+ (NativeVulkanVideoEngine)
+// ============================================================================
+
+JNIEXPORT jboolean JNICALL
+Java_com_example_vulkan_NativeVulkanVideoEngine_nativeInit(
+    JNIEnv* env,
+    jclass /* clazz */,
+    jobject surface,
+    jint width,
+    jint height
+) {
+    if (!surface) {
+        LOGE("Surface proporcionado a Vulkan es nulo.");
+        return JNI_FALSE;
+    }
+
+    ANativeWindow* window = ANativeWindow_fromSurface(env, surface);
+    if (!window) {
+        LOGE("No se pudo obtener ANativeWindow desde Surface.");
+        return JNI_FALSE;
+    }
+
+    auto engine = getVulkanVideoEngine();
+    bool success = engine ? engine->init(window, static_cast<int>(width), static_cast<int>(height)) : false;
+
+    // Liberar referencia local de ANativeWindow_fromSurface
+    ANativeWindow_release(window);
+    return success ? JNI_TRUE : JNI_FALSE;
+}
+
+JNIEXPORT jboolean JNICALL
+Java_com_example_vulkan_NativeVulkanVideoEngine_nativeResize(
+    JNIEnv* env,
+    jclass /* clazz */,
+    jint width,
+    jint height
+) {
+    auto engine = getVulkanVideoEngine();
+    return (engine && engine->resize(static_cast<int>(width), static_cast<int>(height))) ? JNI_TRUE : JNI_FALSE;
+}
+
+JNIEXPORT jboolean JNICALL
+Java_com_example_vulkan_NativeVulkanVideoEngine_nativeImportHardwareBuffer(
+    JNIEnv* env,
+    jclass /* clazz */,
+    jobject hardwareBufferObj
+) {
+    if (!hardwareBufferObj) {
+        return JNI_FALSE;
+    }
+
+    AHardwareBuffer* buffer = AHardwareBuffer_fromHardwareBuffer(env, hardwareBufferObj);
+    if (!buffer) {
+        return JNI_FALSE;
+    }
+
+    auto engine = getVulkanVideoEngine();
+    bool success = engine ? engine->importHardwareBuffer(buffer) : false;
+
+    AHardwareBuffer_release(buffer);
+    return success ? JNI_TRUE : JNI_FALSE;
+}
+
+JNIEXPORT jboolean JNICALL
+Java_com_example_vulkan_NativeVulkanVideoEngine_nativeRender(
+    JNIEnv* env,
+    jclass /* clazz */,
+    jfloat brightness,
+    jfloat contrast,
+    jfloat saturation,
+    jfloat gamma,
+    jfloat sharpness,
+    jfloat blueLightFilter,
+    jfloat sunMode
+) {
+    auto engine = getVulkanVideoEngine();
+    if (!engine) {
+        return JNI_FALSE;
+    }
+
+    bool success = engine->renderFrame(
+        static_cast<float>(brightness),
+        static_cast<float>(contrast),
+        static_cast<float>(saturation),
+        static_cast<float>(gamma),
+        static_cast<float>(sharpness),
+        static_cast<float>(blueLightFilter),
+        static_cast<float>(sunMode)
+    );
+
+    return success ? JNI_TRUE : JNI_FALSE;
+}
+
+JNIEXPORT void JNICALL
+Java_com_example_vulkan_NativeVulkanVideoEngine_nativeRelease(
+    JNIEnv* env,
+    jclass /* clazz */
+) {
+    std::lock_guard<std::mutex> lock(sVulkanEngineMutex);
+    if (sVulkanVideoEngine) {
+        sVulkanVideoEngine->release();
+        sVulkanVideoEngine.reset();
+    }
+}
+
+JNIEXPORT jstring JNICALL
+Java_com_example_vulkan_NativeVulkanVideoEngine_nativeGetLastError(
+    JNIEnv* env,
+    jclass /* clazz */
+) {
+    auto engine = getVulkanVideoEngine();
+    std::string err = engine ? engine->getLastError() : "Motor Vulkan no disponible.";
+    return env->NewStringUTF(err.c_str());
+}
+
+JNIEXPORT jboolean JNICALL
+Java_com_example_vulkan_NativeVulkanVideoEngine_nativeIsHardwareBufferSupported(
+    JNIEnv* env,
+    jclass /* clazz */
+) {
+    auto engine = getVulkanVideoEngine();
+    return (engine && engine->isHardwareBufferExtensionSupported()) ? JNI_TRUE : JNI_FALSE;
 }
 
 } // extern "C"

@@ -71,9 +71,11 @@ import com.example.audio.AudioEngineType
 import com.example.audio.OboeAudioEngine
 import com.example.audio.OboeAudioProcessor
 import com.example.data.VideoEntity
+import com.example.model.GraphicsEngineType
 import com.example.model.VideoItem
 import com.example.opengl.OpenGLVideoPlayerView
 import com.example.opengl.VideoEqualizerState
+import com.example.vulkan.AdaptiveVideoPlayerView
 import com.example.player.PlayerLoadControlHelper
 import com.example.subtitles.AssSubtitleOverlay
 import com.example.subtitles.SubtitleSize
@@ -124,6 +126,7 @@ fun VideoPlayerScreen(
     onChangeVideoSource: () -> Unit,
     onOpenSettings: () -> Unit,
     onAudioEngineChange: ((AudioEngineType) -> Unit)? = null,
+    onPlayClickSound: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -224,6 +227,10 @@ fun VideoPlayerScreen(
     var showAspectRatioSheet by remember { mutableStateOf(false) }
     var showAudioEngineSheet by remember { mutableStateOf(false) }
     var showStereoMonoSheet by remember { mutableStateOf(false) }
+    var currentGraphicsEngine by remember(videoItem.uri, initialVideoEntity) {
+        mutableStateOf(GraphicsEngineType.OPENGL_ES)
+    }
+    var showGraphicsEngineSheet by remember { mutableStateOf(false) }
 
     // Modo de canal de audio: STEREO estándar por defecto o individual guardado
     var audioChannelMode by remember(videoItem.uri, initialVideoEntity) {
@@ -743,6 +750,7 @@ fun VideoPlayerScreen(
             showAspectRatioSheet -> { showAspectRatioSheet = false; saveSettings() }
             showAudioEngineSheet -> { showAudioEngineSheet = false; saveSettings() }
             showStereoMonoSheet -> { showStereoMonoSheet = false; saveSettings() }
+            showGraphicsEngineSheet -> { showGraphicsEngineSheet = false; saveSettings() }
             isControlsLocked -> isControlsLocked = false
             else -> {
                 saveSettings()
@@ -761,13 +769,17 @@ fun VideoPlayerScreen(
                 containerHeight = size.height
             }
     ) {
-        // Superficie de Video Acelerada por GPU con Shaders OpenGL ES en C++
-        OpenGLVideoPlayerView(
+        // Superficie Adaptativa de Video (Vulkan 1.1+ Zero-Copy con Fallback Automático a OpenGL ES)
+        AdaptiveVideoPlayerView(
             player = exoPlayer,
+            preferredEngine = currentGraphicsEngine,
             equalizerState = equalizerState,
             aspectRatioMode = currentAspectMode,
             videoWidth = videoWidth,
             videoHeight = videoHeight,
+            onActiveEngineChanged = { active ->
+                currentGraphicsEngine = active
+            },
             modifier = Modifier.fillMaxSize()
         )
 
@@ -831,6 +843,7 @@ fun VideoPlayerScreen(
                 lastInteractionTime = System.currentTimeMillis()
             },
             onDoubleTapSeek = { isLeft ->
+                onPlayClickSound()
                 val deltaMs = 5000L
                 if (isLeft) {
                     val newPos = (exoPlayer.currentPosition - deltaMs).coerceAtLeast(0L)
@@ -883,7 +896,10 @@ fun VideoPlayerScreen(
                     .padding(20.dp),
                 contentAlignment = Alignment.TopStart
             ) {
-                ControlsUnlockButton(onUnlock = { isControlsLocked = false })
+                ControlsUnlockButton(onUnlock = {
+                    onPlayClickSound()
+                    isControlsLocked = false
+                })
             }
         }
 
@@ -1148,6 +1164,7 @@ fun VideoPlayerScreen(
                     PlayerToolItem.SUBTITLES -> showSubtitlesSheet = true
                     PlayerToolItem.ASPECT_RATIO -> showAspectRatioSheet = true
                     PlayerToolItem.AUDIO_ENGINE -> showAudioEngineSheet = true
+                    PlayerToolItem.GRAPHICS_ENGINE -> showGraphicsEngineSheet = true
                 }
             }
         )
@@ -1295,6 +1312,20 @@ fun VideoPlayerScreen(
                 },
                 onDismiss = {
                     showAudioEngineSheet = false
+                    saveSettings()
+                }
+            )
+        }
+
+        if (showGraphicsEngineSheet) {
+            GraphicsEngineSheet(
+                currentEngine = currentGraphicsEngine,
+                onEngineSelected = { engine ->
+                    currentGraphicsEngine = engine
+                    saveSettings()
+                },
+                onDismiss = {
+                    showGraphicsEngineSheet = false
                     saveSettings()
                 }
             )

@@ -12,9 +12,10 @@ Este documento detalla las fases de desarrollo planificadas para convertir a **N
 [✅] Fase 3: Pipeline de Renderizado con OpenGL ES y Ecualizador de Video
 [✅] Fase 4: Subtítulos SRT/VTT y Búfer de Memoria RAM Adaptativo (Android Go)
 [✅] Fase 5: Aceleración con Núcleo Rust, Subtítulos SSA/ASS y Persistencia por Video
-[🔄] Fase 6: Renderizado Gráfico Adaptativo Vulkan 1.1+ (Detección y Enlace NDK completados)
-[⏳] Fase 7: Transmisión y Pantalla Compartida a TV (Casting / Mirroring)
-[⏳] Fase 8: Empaquetado y Distribución Externa (Uptodown / APK Autónomo)
+[✅] Fase 6: Asistente de Bienvenida, Motores Gráficos y Escaneo de Mensajería
+[🔄] Fase 7: Pipeline de Renderizado Vulkan 1.1+ (Detección, Enlace NDK y Selección en UI completados)
+[⏳] Fase 8: Transmisión y Pantalla Compartida a TV (Casting / Mirroring)
+[⏳] Fase 9: Empaquetado y Distribución Externa (Uptodown / APK Autónomo)
 ```
 
 ---
@@ -41,7 +42,7 @@ Este documento detalla las fases de desarrollo planificadas para convertir a **N
 - [x] **Integración de Decodificadores FFmpeg Puros:** Integración de `media3-ffmpeg-decoder` (DTS, AC3, TrueHD, FLAC, Opus) sin wrappers obsoletos.
 - [x] `OboeAudioProcessor` conectado a Media3 para desviar tramas PCM hacia el motor nativo en C++.
 - [x] Selector dinámico en la interfaz para alternar entre **Oboe C++ (Baja Latencia)** y **Media3 (AudioTrack estándar)**.
-- [x] **Bloqueo Inteligente de Funciones DSP en Media3:** Candado visual en el menú lateral y modal `VoiceNightAudioSheet` con banner explicativo y botón de desbloqueo instantáneo con un solo toque hacia Google Oboe C++.
+- [x] **Audio DSP Inteligente Universal (Google Oboe C++ y Android Media3):** Expansión del procesamiento en tiempo real de Voces Claras y Compresor Dinámico Nocturno (DRC) a ambos motores, eliminando cualquier bloqueo en Media3 y habilitando ecualización y compresión acústica universal sin latencia.
 - [x] **Aislamiento de Escala Tipográfica del Sistema:** Fijación de `fontScale = 1.0f` en el tema de Jetpack Compose para asegurar legibilidad y diagramación predecible independiente de las preferencias del sistema operativo.
 - [x] Transición del diálogo modal hacia una **Pantalla Independiente de Configuración (`SettingsScreen`)** con navegación desacoplada y conservación de estado de reproducción.
 - [x] Verificación de salida física al 100% mediante sintetizador senoidal de tono PCM integrado para Oboe y Media3.
@@ -74,15 +75,16 @@ Este documento detalla las fases de desarrollo planificadas para convertir a **N
     - `SunModeSheet`: Pantalla independiente de compensación para exteriores bajo luz solar intensa y perfiles de alto contraste para accesibilidad visual.
     - `PillarboxBlurSheet`: Control exclusivo para desenfoque y relleno de barras laterales en videos verticales.
     - `FsrUpscaleSheet`: Pantalla dedicada de Super Resolución AMD FidelityFX FSR 1.0 (EASU + RCAS).
-    - `VoiceNightAudioSheet`: Pantalla dedicada de Audio Inteligente DSP (Modo Voces Claras y Compresor Dinámico Nocturno en C++).
+    - `VoiceNightAudioSheet`: Pantalla dedicada de Audio Inteligente DSP (Modo Voces Claras y Compresor Dinámico Nocturno para Oboe C++ y Media3).
     - `AspectRatioSheet`: Selección de modo de pantalla geométrico (Ajustar, Zoom, Llenar).
     - `AudioEngineSheet`: Conmutador de motor de audio (Oboe C++ vs Media3 AudioTrack).
     - `PlaybackSpeedSheet`: Selector de velocidad de reproducción (hasta 2.0x).
     - `SubtitlesBottomSheet`: Gestión de subtítulos internos y externos con selector tipográfico.
     - Modo de Bloqueo de Pantalla (`Lock`): Desactiva toques y gestos accidentales con botón flotante de desbloqueo.
-- [x] **Procesamiento de Audio DSP en Tiempo Real con Google Oboe en C++:**
+- [x] **Procesamiento de Audio DSP en Tiempo Real Universal (Google Oboe C++ y Media3):**
   - **Filtro Peaking Vocal (1.5 kHz a 3.5 kHz):** Realce inteligente de diálogos y frecuencias fonéticas clave.
   - **Compresor de Rango Dinámico (DRC):** Normalización de picos para cine nocturno (suaviza explosiones y levanta susurros).
+  - **Implementación Dual:** Aceleración SIMD NEON bajo Oboe C++ y transformación de flujo PCM optimizada en `OboeAudioProcessor` bajo Media3.
   - **Gestor de Canales en Tiempo Real (Estéreo / Mono / Pseudo-Estéreo Haas 3D):**
     - Enrutamiento estéreo original.
     - Conversión y duplicación de pistas mono a ambos auriculares.
@@ -158,7 +160,35 @@ Este documento detalla las fases de desarrollo planificadas para convertir a **N
 
 ---
 
-### 🔄 Fase 6: Renderizado Gráfico Adaptativo Vulkan 1.1+ (En Progreso)
+### ✅ Fase 6: Asistente de Bienvenida, Motores Gráficos, Efectos Sonoros y Transiciones Gestuales (Completada)
+- [x] **Asistente de Bienvenida y Configuración Inicial (`OnboardingScreen`):**
+  - Flujo guiado interactivo de 6 pasos con indicador visual de progreso (`StepProgressIndicator`), animaciones horizontales y soporte de botón de retorno.
+  - **Paso 1 (Bienvenida y Permisos):** Solicitud interactiva de permisos de lectura de almacenamiento (`READ_MEDIA_VIDEO` en Android 13+ y `READ_EXTERNAL_STORAGE` en Android 8 a 12), con distintivo de estado en tiempo real y garantía de privacidad local (sin nube).
+  - **Paso 2 (Motor de Audio):** Elección entre Android Media3 (AudioTrack estándar) y Google Oboe (Nativo C++ de baja latencia), desglosando ventajas (sincronía Bluetooth vs latencia nula) y desventajas técnicas.
+  - **Paso 3 (Motor Gráfico):** Detección automática del soporte Vulkan 1.1+ del hardware. Si es compatible, permite seleccionar entre OpenGL ES 3.0+ (estable y compatible con todos los efectos) y Vulkan 1.1+ (bajo nivel y menor consumo de CPU), con advertencia explícita de desarrollo activo en funciones avanzadas de video. Si no es compatible, fija OpenGL ES automáticamente con mensaje explicativo.
+  - **Paso 4 (Apariencia y Colores):** Selector de modo de tema (Oscuro para pantallas OLED/Cine, Claro para exteriores y Sincronizado con el sistema), con interruptor para Material You (colores dinámicos del fondo de pantalla en Android 12+).
+  - **Paso 5 (Descubrimiento de Medios):** Selector entre escaneo automático de carpetas de mensajería (WhatsApp y Telegram) o Modo Privado (solo importar archivos manualmente mediante el gestor o galería).
+  - **Paso 6 (Resumen y Arranque):** Tarjeta recapitulativa de opciones seleccionadas y botón directo de inicio hacia la biblioteca.
+- [x] **Módulo de Escaneo de Videos en Mensajería (`MessagingMediaScanner`):**
+  - Consulta segura a `MediaStore.Video.Media.EXTERNAL_CONTENT_URI` filtrando rutas conocidas (`/WhatsApp/Media/WhatsApp Video/`, `/Telegram/Telegram Video/`, etc.).
+  - Extracción de metadatos (título, URI, tamaño, duración) e inserción no destructiva en la base de datos Room evitando duplicados.
+  - Tarjeta de escaneo dedicada en la pantalla principal (`VideoImportScreen`) con indicador de carga y botón de escaneo manual para refrescar videos recibidos en cualquier momento.
+- [x] **Efectos de Sonido de Interfaz Nativos con SoundPool (`SoundEffectManager`):**
+  - Carga asíncrona a 48 kHz mono en memoria del archivo de audio ligero Ogg Vorbis `ui_click.ogg` con latencia imperceptible.
+  - Retroalimentación auditiva en botones de control, navegación, doble toque temporal y selección de videos.
+  - Control de activación en *Configuración > Apariencia* con persistencia en `AppPreferences`.
+  - Script ejecutable de conversión de audio (`scripts/convert_audio_asset.sh`) para transcodificar cualquier audio a Ogg Vorbis ligero.
+- [x] **Indicadores Gestuales Dinámicos y Transición entre Pantallas:**
+  - Animaciones reactivas con físicas de resorte (`spring`) en los indicadores HUD de brillo y volumen (`MinimalistGestureIndicator`), variando anchura y resplandor según la intensidad.
+  - Animación elástica de escala y neón turquesa para el indicador de doble toque (`DoubleTapSeekIndicator`).
+  - Animación cíclica pulsante en la insignia de avance rápido 2X (`FastForward2xBadge`).
+  - Transición fluida con `AnimatedContent` entre Home, Reproductor y Ajustes (desplazamientos verticales y horizontales con desvanecimiento cruzado).
+- [x] **Persistencia de Configuración Inicial (`AppPreferences` y `MainViewModel`):**
+  - Almacenamiento seguro de `isOnboardingCompleted`, `selectedGraphicsEngine`, `scanMessagingApps` y `isSoundEffectsEnabled` con persistencia en `SharedPreferences`.
+
+---
+
+### 🔄 Fase 7: Pipeline de Renderizado Gráfico Vulkan 1.1+ (En Progreso)
 - [x] **Detección Dinámica de Capacidades de Hardware:**
   - Consulta en tiempo de ejecución de `FEATURE_VULKAN_HARDWARE_VERSION` (detección de versión >= 1.1 `0x401000`) y `FEATURE_VULKAN_HARDWARE_LEVEL` mediante `VulkanCapabilities.kt`.
   - Doble verificación nativa en C++ a través de JNI (`nativeQueryVulkanDriver`): consulta dinámica de `vkEnumerateInstanceVersion`, creación de instancia temporal y extracción de propiedades del dispositivo físico (`vkGetPhysicalDeviceProperties`: nombre de GPU, versión del controlador y tipo de hardware).
@@ -166,6 +196,8 @@ Este documento detalla las fases de desarrollo planificadas para convertir a **N
   - Enlace de la biblioteca nativa `vulkan` en `app/src/main/cpp/CMakeLists.txt` con compatibilidad cruzada estricta para 32 bits (`armeabi-v7a`, `x86`) y 64 bits (`arm64-v8a`, `x86_64`).
 - [x] **Módulo de Diagnóstico Gráfico en Telemetría (`TelemetrySubScreen`):**
   - Tarjeta interactiva en vivo con distintivo de compatibilidad (Vulkan 1.1+ Listo / Vulkan 1.0 Básico / Incompatible), versión de API, nivel de hardware, GPU detectada y versión del controlador.
+- [x] **Integración en Selección de Motor Gráfico (`GraphicsEngineType`):**
+  - Enum `OPENGL_ES` y `VULKAN` persistido en disco y configurable desde el asistente inicial.
 - [ ] **Arquitectura con Degradación Elegante (*Graceful Fallback*):**
   - Dispositivos con Vulkan 1.1+: Canal de renderizado nativo C++ con extensión `VK_ANDROID_external_memory_android_hardware_buffer` para menor sobrecarga de CPU y consumo de batería.
   - Dispositivos sin soporte o con versiones previas (Vulkan 1.0): Renderizado automático y transparente con el pipeline probado de OpenGL ES 2.0 / 3.0.
@@ -173,16 +205,13 @@ Este documento detalla las fases de desarrollo planificadas para convertir a **N
   - Pipeline de compilación de sombreadores GLSL hacia bytecode binario SPIR-V para los efectos de color, nitidez y reconstrucción.
 - [ ] **Canal de Renderizado Nativo C++ (`VulkanVideoEngine`):**
   - Implementación de `VkInstance`, `VkSurfaceKHR`, `VkSwapchainKHR`, colas de comandos y sincronización de tramas.
-- [ ] **Selector Inteligente en Pantalla de Configuración (`SettingsScreen`):**
-  - Opción interactiva para alternar entre motor Vulkan y OpenGL ES cuando el hardware lo soporte.
-  - Bloqueo visual con mensaje informativo si el procesador no cuenta con Vulkan 1.1+.
 - [ ] Perfiles automáticos de uso de memoria RAM (límite estricto de búferes en dispositivos de 1GB/2GB y Android Go).
 - [ ] Estrategia de reducción de resolución de texturas intermedias si la GPU reporta sobrecarga.
 - [ ] Desactivación selectiva de shaders pesados en dispositivos con procesadores ARMv7 de 32 bits.
 
 ---
 
-### ⏳ Fase 7: Transmisión y Pantalla Compartida a TV (Casting / Mirroring con Fidelidad Total)
+### ⏳ Fase 8: Transmisión y Pantalla Compartida a TV (Casting / Mirroring con Fidelidad Total)
 - [ ] **Soporte de Pantallas Secundarias (`DisplayManager` / `Presentation`):**
   - Salida directa por cable USB-C a HDMI / DisplayPort (Modo Escritorio / Samsung DeX / Display externo): renderiza el pipeline completo de OpenGL ES y audio Oboe nativo con calibración idéntica a la pantalla del móvil.
 - [ ] **Protocolo de Pantalla Inalámbrica (Miracast / Wi-Fi Display):**
@@ -192,7 +221,7 @@ Este documento detalla las fases de desarrollo planificadas para convertir a **N
 
 ---
 
-### ⏳ Fase 8: Empaquetado y Distribución Libre
+### ⏳ Fase 9: Empaquetado y Distribución Libre
 - [x] **Pipeline de Integración Continua (CI/CD) con GitHub Actions (`build-debug.yml`):**
   - Descarga integral del repositorio y configuración automática de herramientas nativas (NDK r26d, CMake 3.22.1 y Rust stable con targets Android).
   - Compilación limpia forzada (**sin caché**) con flags `--no-build-cache` y `cache-disabled: true`.

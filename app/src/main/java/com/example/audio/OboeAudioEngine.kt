@@ -12,7 +12,12 @@ object OboeAudioEngine {
     private const val TAG = "OboeAudioEngine"
     private var isLibraryLoaded = false
     private var isCompressorActive = false
+    var compressorIntensity: Float = 0.80f
+        private set
+
     private var isVoiceClarityActive = false
+    var voiceClarityGain: Float = 0.75f
+        private set
 
     init {
         try {
@@ -119,6 +124,7 @@ object OboeAudioEngine {
      */
     fun setDynamicCompressor(enabled: Boolean, intensity: Float = 0.8f) {
         isCompressorActive = enabled
+        compressorIntensity = intensity
         if (!isLibraryLoaded) return
         try {
             nativeSetDynamicCompressor(enabled, intensity)
@@ -128,11 +134,12 @@ object OboeAudioEngine {
     }
 
     /**
-     * Activa o desactiva el Realce de Diálogos / Modo Voces Claras en C++.
+     * Activa o desactiva el Realce de Diálogos / Modo Voces Claras en C++ y Media3.
      * Aplica ganancia selectiva sobre la banda vocal (1.5 kHz a 3.5 kHz).
      */
     fun setVoiceClarity(enabled: Boolean, gain: Float = 0.75f) {
         isVoiceClarityActive = enabled
+        voiceClarityGain = gain
         if (!isLibraryLoaded) return
         try {
             nativeSetVoiceClarity(enabled, gain)

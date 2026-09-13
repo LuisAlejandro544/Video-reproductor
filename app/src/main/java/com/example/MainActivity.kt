@@ -10,6 +10,16 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -37,12 +47,14 @@ import com.example.ui.VideoPlayerScreen
 import com.example.ui.VideoSourceDialog
 import com.example.ui.theme.AppThemeMode
 import com.example.ui.theme.MyApplicationTheme
+import com.example.ui.onboarding.OnboardingScreen
 import com.example.utils.VideoUtils
 
 /**
  * Pantallas principales de navegación de la aplicación
  */
 enum class AppScreen {
+    ONBOARDING,
     HOME,
     PLAYER,
     SETTINGS
@@ -108,8 +120,17 @@ fun MainVideoApp(
     // Observar el motor de audio persistido en disco (Media3 por defecto inicial)
     val selectedAudioEngine by viewModel.selectedAudioEngine.collectAsStateWithLifecycle()
 
-    // Destino actual y previo de navegación
-    var currentScreen by remember { mutableStateOf(AppScreen.HOME) }
+    // Observar el estado del asistente de bienvenida y configuración de medios/gráficos
+    val isOnboardingCompleted by viewModel.isOnboardingCompleted.collectAsStateWithLifecycle()
+    val selectedGraphicsEngine by viewModel.selectedGraphicsEngine.collectAsStateWithLifecycle()
+    val scanMessagingApps by viewModel.scanMessagingApps.collectAsStateWithLifecycle()
+    val isScanningMessaging by viewModel.isScanningMessaging.collectAsStateWithLifecycle()
+    val isSoundEffectsEnabled by viewModel.isSoundEffectsEnabled.collectAsStateWithLifecycle()
+
+    // Destino actual y previo de navegación (inicia en ONBOARDING si el usuario es nuevo)
+    var currentScreen by remember {
+        mutableStateOf(if (!isOnboardingCompleted) AppScreen.ONBOARDING else AppScreen.HOME)
+    }
     var previousScreen by remember { mutableStateOf(AppScreen.HOME) }
 
     // Bloquear en orientación vertical siempre que estemos en HOME o SETTINGS
@@ -170,119 +191,226 @@ fun MainVideoApp(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         modifier = Modifier.fillMaxSize()
     ) { innerPadding ->
-        when (currentScreen) {
-            AppScreen.SETTINGS -> {
-                // Pantalla independiente y dedicada de Configuración y Telemetría
-                SettingsScreen(
-                    currentEngine = selectedAudioEngine,
-                    onEngineChanged = { newEngine ->
-                        viewModel.setAudioEngine(newEngine)
-                    },
-                    currentThemeMode = currentThemeMode,
-                    useDynamicColor = useDynamicColor,
-                    onThemeModeChanged = { newMode ->
-                        viewModel.setAppThemeMode(newMode)
-                    },
-                    onDynamicColorChanged = { enabled ->
-                        viewModel.setDynamicColor(enabled)
-                    },
-                    onNavigateBack = {
-                        currentScreen = previousScreen
-                    },
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .systemBarsPadding()
-                )
-            }
-            AppScreen.PLAYER -> {
-                val activeVideo = currentVideo
-                if (activeVideo != null) {
-                    // Pantalla de Reproducción activa (Edge-to-Edge nativa completa con clave única de URI)
-                    key(activeVideo.uri.toString()) {
-                        VideoPlayerScreen(
-                            videoItem = activeVideo,
-                            initialVideoEntity = currentVideoEntity,
-                            currentAudioEngine = selectedAudioEngine,
-                            initialPositionMs = currentPlaybackPositionMs,
-                            onPositionChanged = { newPos ->
-                                currentPlaybackPositionMs = newPos
-                            },
-                            onPlaybackProgress = { posMs, durMs ->
-                                viewModel.updatePlaybackProgress(
-                                    activeVideo.uri.toString(),
-                                    posMs,
-                                    durMs,
-                                    currentVideoEntity?.id ?: 0L
-                                )
-                            },
-                            onSaveVideoSettings = { updatedEntity ->
-                                currentVideoEntity = updatedEntity
-                                viewModel.saveVideoSettings(updatedEntity)
-                            },
-                            onBackToHome = {
-                                activity?.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
-                                currentVideo = null
-                                currentVideoEntity = null
-                                currentPlaybackPositionMs = 0L
-                                currentScreen = AppScreen.HOME
-                            },
-                            onChangeVideoSource = {
-                                showSourceDialog = true
-                            },
-                            onOpenSettings = {
-                                previousScreen = AppScreen.PLAYER
-                                currentScreen = AppScreen.SETTINGS
-                            },
-                            onAudioEngineChange = { newEngine ->
-                                viewModel.setAudioEngine(newEngine)
-                            },
-                            modifier = Modifier.fillMaxSize()
-                        )
+        AnimatedContent(
+            targetState = currentScreen,
+            transitionSpec = {
+                when {
+                    // Transición hacia el Reproductor: entrada vertical ascendente cinemática
+                    targetState == AppScreen.PLAYER -> {
+                        (slideInVertically(animationSpec = tween(380, easing = FastOutSlowInEasing)) { it } +
+                                fadeIn(animationSpec = tween(260)))
+                            .togetherWith(
+                                slideOutVertically(animationSpec = tween(380, easing = FastOutSlowInEasing)) { -it / 4 } +
+                                        fadeOut(animationSpec = tween(200))
+                            )
                     }
-                } else {
-                    currentScreen = AppScreen.HOME
+                    // Regreso desde el Reproductor: salida vertical descendente suave
+                    initialState == AppScreen.PLAYER -> {
+                        (slideInVertically(animationSpec = tween(380, easing = FastOutSlowInEasing)) { -it / 4 } +
+                                fadeIn(animationSpec = tween(260)))
+                            .togetherWith(
+                                slideOutVertically(animationSpec = tween(380, easing = FastOutSlowInEasing)) { it } +
+                                        fadeOut(animationSpec = tween(200))
+                            )
+                    }
+                    // Transición hacia Ajustes: deslizamiento horizontal desde la derecha
+                    targetState == AppScreen.SETTINGS -> {
+                        (slideInHorizontally(animationSpec = tween(320, easing = FastOutSlowInEasing)) { it } +
+                                fadeIn(animationSpec = tween(240)))
+                            .togetherWith(
+                                slideOutHorizontally(animationSpec = tween(320, easing = FastOutSlowInEasing)) { -it / 3 } +
+                                        fadeOut(animationSpec = tween(200))
+                            )
+                    }
+                    // Regreso desde Ajustes hacia Home: deslizamiento horizontal inverso
+                    initialState == AppScreen.SETTINGS -> {
+                        (slideInHorizontally(animationSpec = tween(320, easing = FastOutSlowInEasing)) { -it / 3 } +
+                                fadeIn(animationSpec = tween(240)))
+                            .togetherWith(
+                                slideOutHorizontally(animationSpec = tween(320, easing = FastOutSlowInEasing)) { it } +
+                                        fadeOut(animationSpec = tween(200))
+                            )
+                    }
+                    // Transición por defecto entre onboarding u otros estados
+                    else -> {
+                        fadeIn(animationSpec = tween(280))
+                            .togetherWith(fadeOut(animationSpec = tween(280)))
+                    }
                 }
-            }
-            AppScreen.HOME -> {
-                // Pantalla de Inicio / Importación de Video enriquecida con biblioteca Room
-                VideoImportScreen(
-                    importedVideos = importedVideos,
-                    selectedAudioEngine = selectedAudioEngine,
-                    onOpenAudioSettings = {
-                        previousScreen = AppScreen.HOME
-                        currentScreen = AppScreen.SETTINGS
-                    },
-                    onOpenGallery = openGallery,
-                    onOpenFileManager = openFileManager,
-                    onPlayVideo = { entity ->
-                        viewModel.playFromHistory(
-                            entity = entity,
-                            onError = { errorMsg ->
-                                android.widget.Toast.makeText(context, errorMsg, android.widget.Toast.LENGTH_LONG).show()
-                                showSourceDialog = true
-                            },
-                            onPlay = { item, lastPos, updatedEntity ->
-                                currentVideo = item
-                                currentPlaybackPositionMs = lastPos
-                                currentVideoEntity = updatedEntity
-                                currentScreen = AppScreen.PLAYER
+            },
+            label = "screen_transition"
+        ) { targetScreen ->
+            when (targetScreen) {
+                AppScreen.ONBOARDING -> {
+                    OnboardingScreen(
+                        initialAudioEngine = selectedAudioEngine,
+                        initialGraphicsEngine = selectedGraphicsEngine,
+                        initialThemeMode = currentThemeMode,
+                        initialDynamicColor = useDynamicColor,
+                        initialScanMessaging = scanMessagingApps,
+                        onComplete = { audioEngine, graphicsEngine, themeMode, dynamicColor, scanMessaging ->
+                            viewModel.playClickSound()
+                            viewModel.completeOnboarding(
+                                audioEngine = audioEngine,
+                                graphicsEngine = graphicsEngine,
+                                themeMode = themeMode,
+                                dynamicColor = dynamicColor,
+                                scanMessaging = scanMessaging
+                            ) {
+                                currentScreen = AppScreen.HOME
                             }
-                        )
-                    },
-                    onDeleteVideo = { videoId ->
-                        val targetEntity = importedVideos.find { it.id == videoId }
-                        viewModel.deleteVideo(videoId, targetEntity?.uriString)
-                    },
-                    onRenameVideo = { videoId, newName ->
-                        viewModel.renameVideo(videoId, newName)
-                    },
-                    onClearHistory = {
-                        viewModel.clearAllVideos()
-                    },
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .systemBarsPadding()
-                )
+                        },
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
+                AppScreen.SETTINGS -> {
+                    // Pantalla independiente y dedicada de Configuración y Telemetría
+                    SettingsScreen(
+                        currentEngine = selectedAudioEngine,
+                        onEngineChanged = { newEngine ->
+                            viewModel.playClickSound()
+                            viewModel.setAudioEngine(newEngine)
+                        },
+                        currentThemeMode = currentThemeMode,
+                        useDynamicColor = useDynamicColor,
+                        onThemeModeChanged = { newMode ->
+                            viewModel.playClickSound()
+                            viewModel.setAppThemeMode(newMode)
+                        },
+                        onDynamicColorChanged = { enabled ->
+                            viewModel.playClickSound()
+                            viewModel.setDynamicColor(enabled)
+                        },
+                        isSoundEffectsEnabled = isSoundEffectsEnabled,
+                        onSoundEffectsToggled = { enabled ->
+                            viewModel.setSoundEffectsEnabled(enabled)
+                        },
+                        onNavigateBack = {
+                            viewModel.playClickSound()
+                            currentScreen = previousScreen
+                        },
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .systemBarsPadding()
+                    )
+                }
+                AppScreen.PLAYER -> {
+                    val activeVideo = currentVideo
+                    if (activeVideo != null) {
+                        // Pantalla de Reproducción activa (Edge-to-Edge nativa completa con clave única de URI)
+                        key(activeVideo.uri.toString()) {
+                            VideoPlayerScreen(
+                                videoItem = activeVideo,
+                                initialVideoEntity = currentVideoEntity,
+                                currentAudioEngine = selectedAudioEngine,
+                                initialPositionMs = currentPlaybackPositionMs,
+                                onPositionChanged = { newPos ->
+                                    currentPlaybackPositionMs = newPos
+                                },
+                                onPlaybackProgress = { posMs, durMs ->
+                                    viewModel.updatePlaybackProgress(
+                                        activeVideo.uri.toString(),
+                                        posMs,
+                                        durMs,
+                                        currentVideoEntity?.id ?: 0L
+                                    )
+                                },
+                                onSaveVideoSettings = { updatedEntity ->
+                                    currentVideoEntity = updatedEntity
+                                    viewModel.saveVideoSettings(updatedEntity)
+                                },
+                                onBackToHome = {
+                                    viewModel.playClickSound()
+                                    activity?.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+                                    currentVideo = null
+                                    currentVideoEntity = null
+                                    currentPlaybackPositionMs = 0L
+                                    currentScreen = AppScreen.HOME
+                                },
+                                onChangeVideoSource = {
+                                    viewModel.playClickSound()
+                                    showSourceDialog = true
+                                },
+                                onOpenSettings = {
+                                    viewModel.playClickSound()
+                                    previousScreen = AppScreen.PLAYER
+                                    currentScreen = AppScreen.SETTINGS
+                                },
+                                onAudioEngineChange = { newEngine ->
+                                    viewModel.playClickSound()
+                                    viewModel.setAudioEngine(newEngine)
+                                },
+                                onPlayClickSound = {
+                                    viewModel.playClickSound()
+                                },
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        }
+                    } else {
+                        currentScreen = AppScreen.HOME
+                    }
+                }
+                AppScreen.HOME -> {
+                    // Pantalla de Inicio / Importación de Video enriquecida con biblioteca Room
+                    VideoImportScreen(
+                        importedVideos = importedVideos,
+                        selectedAudioEngine = selectedAudioEngine,
+                        scanMessagingApps = scanMessagingApps,
+                        isScanningMessaging = isScanningMessaging,
+                        onOpenAudioSettings = {
+                            viewModel.playClickSound()
+                            previousScreen = AppScreen.HOME
+                            currentScreen = AppScreen.SETTINGS
+                        },
+                        onOpenGallery = {
+                            viewModel.playClickSound()
+                            openGallery()
+                        },
+                        onOpenFileManager = {
+                            viewModel.playClickSound()
+                            openFileManager()
+                        },
+                        onTriggerMessagingScan = {
+                            viewModel.playClickSound()
+                            viewModel.triggerMessagingScan { count: Int ->
+                                val msg = if (count > 0) "¡Se importaron $count videos de mensajería!" else "No se encontraron nuevos videos en WhatsApp o Telegram."
+                                android.widget.Toast.makeText(context, msg, android.widget.Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                        onPlayVideo = { entity ->
+                            viewModel.playClickSound()
+                            viewModel.playFromHistory(
+                                entity = entity,
+                                onError = { errorMsg ->
+                                    android.widget.Toast.makeText(context, errorMsg, android.widget.Toast.LENGTH_LONG).show()
+                                    showSourceDialog = true
+                                },
+                                onPlay = { item, lastPos, updatedEntity ->
+                                    currentVideo = item
+                                    currentPlaybackPositionMs = lastPos
+                                    currentVideoEntity = updatedEntity
+                                    currentScreen = AppScreen.PLAYER
+                                }
+                            )
+                        },
+                        onDeleteVideo = { videoId ->
+                            viewModel.playClickSound()
+                            val targetEntity = importedVideos.find { it.id == videoId }
+                            viewModel.deleteVideo(videoId, targetEntity?.uriString)
+                        },
+                        onRenameVideo = { videoId, newName ->
+                            viewModel.playClickSound()
+                            viewModel.renameVideo(videoId, newName)
+                        },
+                        onClearHistory = {
+                            viewModel.playClickSound()
+                            viewModel.clearAllVideos()
+                        },
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .systemBarsPadding()
+                    )
+                }
             }
         }
 

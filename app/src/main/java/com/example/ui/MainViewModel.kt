@@ -6,12 +6,15 @@ import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.audio.AudioEngineType
+import com.example.audio.SoundEffectManager
 import com.example.data.AppDatabase
 import com.example.data.AppPreferences
 import com.example.data.VideoEntity
 import com.example.data.VideoRepository
+import com.example.model.GraphicsEngineType
 import com.example.model.VideoItem
 import com.example.ui.theme.AppThemeMode
+import com.example.utils.MessagingMediaScanner
 import com.example.utils.VideoUtils
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -33,6 +36,31 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val repository: VideoRepository
     private val appPreferences = AppPreferences.getInstance(application)
+    private val soundEffectManager = SoundEffectManager.getInstance(application)
+
+    /**
+     * Preferencia de sonidos de interfaz interactivos (clicks de botones/tarjetas).
+     */
+    private val _isSoundEffectsEnabled = MutableStateFlow(appPreferences.isSoundEffectsEnabled)
+    val isSoundEffectsEnabled: StateFlow<Boolean> = _isSoundEffectsEnabled.asStateFlow()
+
+    /**
+     * Reproduce el sonido de click de interfaz si la opción está activa.
+     */
+    fun playClickSound(volume: Float = 0.7f, pitch: Float = 1.0f) {
+        soundEffectManager.playClickSound(volume, pitch)
+    }
+
+    /**
+     * Actualiza y persiste la activación de sonidos de interfaz.
+     */
+    fun setSoundEffectsEnabled(enabled: Boolean) {
+        appPreferences.isSoundEffectsEnabled = enabled
+        _isSoundEffectsEnabled.value = enabled
+        if (enabled) {
+            playClickSound()
+        }
+    }
 
     /**
      * Flujo observable con el historial completo de videos importados y vistos.
@@ -58,11 +86,110 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val useDynamicColor: StateFlow<Boolean> = _useDynamicColor.asStateFlow()
 
     /**
+     * Estado de finalización del asistente de bienvenida / onboarding inicial.
+     */
+    private val _isOnboardingCompleted = MutableStateFlow(appPreferences.isOnboardingCompleted)
+    val isOnboardingCompleted: StateFlow<Boolean> = _isOnboardingCompleted.asStateFlow()
+
+    /**
+     * Motor gráfico de renderizado seleccionado (OpenGL ES vs Vulkan).
+     */
+    private val _selectedGraphicsEngine = MutableStateFlow(appPreferences.selectedGraphicsEngine)
+    val selectedGraphicsEngine: StateFlow<GraphicsEngineType> = _selectedGraphicsEngine.asStateFlow()
+
+    /**
+     * Preferencia de escaneo automático de carpetas de mensajería (WhatsApp y Telegram).
+     */
+    private val _scanMessagingApps = MutableStateFlow(appPreferences.scanMessagingApps)
+    val scanMessagingApps: StateFlow<Boolean> = _scanMessagingApps.asStateFlow()
+
+    /**
+     * Indicador de progreso de escaneo en segundo plano.
+     */
+    private val _isScanningMessaging = MutableStateFlow(false)
+    val isScanningMessaging: StateFlow<Boolean> = _isScanningMessaging.asStateFlow()
+
+    /**
      * Actualiza y persiste la selección de motor de audio del usuario.
      */
     fun setAudioEngine(engine: AudioEngineType) {
         appPreferences.selectedAudioEngine = engine
         _selectedAudioEngine.value = engine
+    }
+
+    /**
+     * Actualiza y persiste el motor gráfico seleccionado (OpenGL ES vs Vulkan).
+     */
+    fun setGraphicsEngine(engine: GraphicsEngineType) {
+        appPreferences.selectedGraphicsEngine = engine
+        _selectedGraphicsEngine.value = engine
+    }
+
+    /**
+     * Actualiza y persiste la opción de escaneo de mensajería.
+     */
+    fun setScanMessagingApps(enabled: Boolean) {
+        appPreferences.scanMessagingApps = enabled
+        _scanMessagingApps.value = enabled
+    }
+
+    /**
+     * Completa el asistente de bienvenida guardando todas las elecciones del usuario.
+     */
+    fun completeOnboarding(
+        audioEngine: AudioEngineType,
+        graphicsEngine: GraphicsEngineType,
+        themeMode: AppThemeMode,
+        dynamicColor: Boolean,
+        scanMessaging: Boolean,
+        onFinished: () -> Unit
+    ) {
+        appPreferences.selectedAudioEngine = audioEngine
+        _selectedAudioEngine.value = audioEngine
+
+        appPreferences.selectedGraphicsEngine = graphicsEngine
+        _selectedGraphicsEngine.value = graphicsEngine
+
+        appPreferences.appThemeMode = themeMode
+        _appThemeMode.value = themeMode
+
+        appPreferences.useDynamicColor = dynamicColor
+        _useDynamicColor.value = dynamicColor
+
+        appPreferences.scanMessagingApps = scanMessaging
+        _scanMessagingApps.value = scanMessaging
+
+        appPreferences.isOnboardingCompleted = true
+        _isOnboardingCompleted.value = true
+
+        if (scanMessaging) {
+            triggerMessagingScan()
+        }
+
+        onFinished()
+    }
+
+    /**
+     * Reinicia el estado de bienvenida para permitir ejecutar el asistente nuevamente.
+     */
+    fun restartOnboarding() {
+        appPreferences.resetOnboarding()
+        _isOnboardingCompleted.value = false
+    }
+
+    /**
+     * Dispara un escaneo de videos en carpetas públicas de WhatsApp y Telegram en segundo plano.
+     */
+    fun triggerMessagingScan(onCompleted: ((Int) -> Unit)? = null) {
+        viewModelScope.launch {
+            _isScanningMessaging.value = true
+            val count = MessagingMediaScanner.scanMessagingVideos(
+                context = getApplication(),
+                repository = repository
+            )
+            _isScanningMessaging.value = false
+            onCompleted?.invoke(count)
+        }
     }
 
     /**

@@ -12,6 +12,28 @@
 
 ## ✨ Características Principales
 
+- **Efectos de Sonido de Interfaz Táctil (UI Clicks con SoundPool de Ultra Baja Latencia):**
+  - **Retroalimentación Acústica Nítida:** Respuesta auditiva inmediata al interactuar con botones de navegación, controles de reproducción, selección de videos e indicadores gestuales.
+  - **Motor Nativo SoundPool a 48 kHz:** Carga asíncrona en memoria y reproducción simultánea con 0 ms de sobrecarga de hilo principal, optimizado en formato Ogg Vorbis (`ui_click.ogg`).
+  - **Ajuste y Control en Pantalla:** Interruptor en *Configuración > Apariencia* para activar o desactivar los efectos sonoros en cualquier momento, con persistencia en `AppPreferences`.
+  - **Herramienta de Optimización de Audio (`scripts/convert_audio_asset.sh`):** Script automatizado para convertir cualquier muestra de audio (WAV/MP3/FLAC) a Ogg Vorbis mono optimizado para móviles de bajos recursos.
+- **Indicadores Gestuales Dinámicos y Transiciones Cinemáticas entre Pantallas:**
+  - **Indicadores HUD Reactivos (`PlayerHudIndicators`):** Interpolación suave con físicas de resorte (`spring`) en los medidores flotantes de volumen y brillo, expansión adaptativa de cápsula y resplandor cromático según el nivel.
+  - **Animación Elástica de Doble Toque (+5s / -5s):** Pulso con rebote dinámico y resplandor para confirmar el salto temporal en reproducción.
+  - **Insignia Pulsante de Avance Rápido 2X:** Latido continuo y brillo cíclico mientras se mantiene presionada la pantalla.
+  - **Transición Fluida entre Pantallas (`AnimatedContent`):** Deslizamientos cinemáticos verticales para el reproductor y horizontales para la configuración con desvanecimientos combinados (`togetherWith`).
+- **Asistente de Bienvenida y Configuración Guiada (`OnboardingScreen`):**
+  - **Experiencia Inicial Paso a Paso:** Al abrir la aplicación por primera vez, un asistente visual con indicador de progreso guía al usuario para personalizar la experiencia según su hardware y preferencias:
+    - **Paso 1 (Bienvenida y Permisos):** Solicitud interactiva y transparente de permisos de almacenamiento (`READ_MEDIA_VIDEO` en Android 13+ y `READ_EXTERNAL_STORAGE` en Android 8 a 12), con distintivo de estado en tiempo real.
+    - **Paso 2 (Motor de Audio):** Comparativa detallada entre **Android Media3** (AudioTrack estándar con sincronización Bluetooth óptima) y **Google Oboe C++** (ultra baja latencia sin capas intermedias), desglosando ventajas y desventajas técnicas.
+    - **Paso 3 (Motor Gráfico):** Detección en tiempo real de compatibilidad con **Vulkan 1.1+**. Si el teléfono lo soporta, permite elegir entre **OpenGL ES 3.0+** (probado, estable y con soporte universal de efectos) o **Vulkan 1.1+** (bajo nivel con menor consumo energético y sobrecarga de CPU, indicando explícitamente que se encuentra en desarrollo activo de funciones). Si el hardware carece de Vulkan 1.1+, selecciona automáticamente OpenGL ES explicando el motivo.
+    - **Paso 4 (Apariencia y Colores):** Elección entre Modo Oscuro (OLED/Cine), Modo Claro (Exteriores) y Seguir al Sistema, con interruptor para activar o desactivar Material You (colores dinámicos extraídos del fondo de pantalla en Android 12+).
+    - **Paso 5 (Modo de Descubrimiento):** Elección entre habilitar el escaneo de carpetas de mensajería (WhatsApp y Telegram) o el Modo Privado (solo importar archivos manualmente).
+    - **Paso 6 (Resumen y Comienzo):** Tarjeta con el resumen de todas las opciones seleccionadas y botón directo de inicio a la biblioteca.
+- **Descubrimiento y Escaneo Inteligente de Videos de Mensajería (WhatsApp y Telegram):**
+  - **Escaneo Local Directo (`MessagingMediaScanner`):** Detecta e indexa automáticamente en la biblioteca local de Room los videos recibidos y descargados en las carpetas públicas de WhatsApp (`/WhatsApp/Media/WhatsApp Video/`) y Telegram (`/Telegram/Telegram Video/`).
+  - **100% Privado y Autónomo:** Todo el escaneo se realiza de forma estrictamente local en el dispositivo; ningún dato ni archivo es enviado a la nube ni a servidores externos.
+  - **Tarjeta de Control Dinámica:** En la pantalla principal (`VideoImportScreen`), una tarjeta dedicada permite visualizar el estado del escaneo y refrescar con un toque para detectar nuevos videos recibidos en cualquier momento.
 - **Personalización y Apariencia Material You (Modo Oscuro, Claro y del Sistema con Color Dinámico):**
   - **Selector de Tema Completo:** Alternancia fluida entre **Modo Oscuro** (óptimo para salas de cine y ahorro de batería en pantallas OLED), **Modo Claro** (máxima visibilidad en exteriores bajo luz solar) y **Seguir al Sistema** (sincronizado automáticamente con las preferencias del sistema operativo).
   - **Color Dinámico Material You (Android 12+ / API 31+):** Adaptación cromática armoniosa que extrae y aplica automáticamente los tonos primarios y secundarios del fondo de pantalla (*wallpaper*) del usuario mediante `dynamicDarkColorScheme` y `dynamicLightColorScheme`.
@@ -77,10 +99,10 @@
     - Algoritmo de transferencia luminosa adaptativa no lineal ejecutado directamente en la GPU (`VideoColorEngine`).
     - Eleva y expande las sombras y áreas empastadas sin sobreexponer las altas luces, compensando el reflejo y la luz ambiental abrasadora sin necesidad de sobrecalentar la pantalla al 100% de brillo manual.
     - Deslizador de intensidad de realce solar (0% a 100%) y perfiles dedicados (*Sol Directo Pleno Día*, *Alto Contraste Accesibilidad*, *Equilibrado al Aire Libre*).
-  - **Compresor Dinámico (DRC) y Modo Voces Claras (DSP Nativo en C++ con Google Oboe):**
+  - **Compresor Dinámico (DRC) y Modo Voces Claras (Audio DSP Inteligente Universal para Oboe y Media3):**
     - **Filtro Peaking Vocal:** Ganancia selectiva sobre la banda formativa humana (1.5 kHz a 3.5 kHz) para maximizar la inteligibilidad de diálogos y susurros en películas y series.
     - **Compresor Dinámico Nocturno (Dynamic Range Compressor):** Atenuación automática con tiempo de respuesta de microsegundos sobre picos estridentes (explosiones, disparos) mientras eleva pasajes de bajo volumen para disfrutar del cine sin sobresaltos.
-    - Cero latencia añadida (0 ms) ejecutado dentro del bucle de callback de audio C++ con punto flotante acelerado por hardware (NEON).
+    - **Soporte Universal en Ambos Motores:** Procesamiento nativo en C++ con aceleración por hardware (NEON) al operar con Google Oboe, y procesamiento integrado de flujo PCM de alta velocidad en `OboeAudioProcessor` al operar con Media3, garantizando 0 ms de latencia perceptiva y sincronía A/V perfecta en ambos modos.
   - **Desenfoque de Fondo para Videos Verticales (Pillarbox Blur):**
     - Sustituye las barras negras laterales generadas al reproducir videos verticales (formato 9:16 o 4:3 en pantallas apaisadas) por una versión ampliada, desenfocada (filtro Gaussiano de 9 toques) y suavemente atenuada del propio video en tiempo real.
     - Ejecutado directamente en GPU mediante doble paso de renderizado sin sobrecarga de decodificación adicional ni lag.
@@ -126,9 +148,11 @@
 - **Aislamiento de Escala de Fuente del Sistema Operativo (`fontScale = 1.0f`):**
   - La aplicación define su propia escala tipográfica óptima e independiente de la configuración global de tamaño de texto de Android.
   - Previene distorsiones visuales, desbordamientos de paneles y solapamientos en menús o subtítulos cuando el usuario tiene configurada una fuente gigante o reducida en su teléfono.
-- **Sistema de Candado Inteligente para Funciones Exclusivas de Oboe en Media3:**
-  - Cuando el reproductor opera en modo Media3, las herramientas dependientes de procesamiento DSP en tiempo real (Compresor Dinámico Nocturno y Voces Claras) se bloquean con un icono de candado visible tanto en el menú lateral como en la hoja de ajustes.
-  - Se incluye un banner explicativo y un botón directo para activar Google Oboe C++ y desbloquear todas las capacidades de sonido de alta fidelidad sin rodeos.
+- **Audio DSP Inteligente Universal en Tiempo Real (Google Oboe C++ y Android Media3):**
+  - Procesamiento acústico en tiempo real disponible tanto bajo Google Oboe C++ (vía SIMD NEON) como en Android Media3 (vía pipeline PCM optimizado en `OboeAudioProcessor`).
+  - **Voces Claras (Voice Clarity):** Filtro Peaking en la banda formativa humana (1.5 kHz a 3.5 kHz) para maximizar la inteligibilidad de diálogos y susurros.
+  - **Compresor Dinámico Nocturno (DRC):** Atenúa picos estridentes (explosiones, disparos) y realza pasajes de bajo volumen para disfrutar del cine sin sobresaltos nocturnos.
+  - Disponibilidad universal sin restricciones ni candados: la subpantalla `VoiceNightAudioSheet` y el panel lateral operan de forma interactiva e inmediata en ambos motores de audio, manteniendo sincronía A/V perfecta de 0 ms.
 - **Doble Motor de Audio Seleccionable con Persistencia:**
   - **Media3 (AudioTrack Estándar) [Predeterminado]:** Pipeline nativo estándar de Android con sincronización A/V automática, compensación de retardo para auriculares Bluetooth y compatibilidad universal con todos los dispositivos.
   - **Google Oboe (Nativo C++):** Motor de ultra baja latencia que interactúa directamente con **AAudio** en Android 8.0+ y realiza fallback automático a **OpenSL ES** en hardware heredado. Elimina microcortes y asegura procesamiento directo a nivel de muestra.

@@ -61,32 +61,32 @@ import kotlin.math.roundToInt
 /**
  * VoiceNightAudioSheet - Pantalla independiente para el Compresor Dinámico y Modo Voces Claras
  *
- * Procesa en tiempo real las tramas de audio PCM dentro del motor C++ (Google Oboe):
+ * Procesa en tiempo real las tramas de audio PCM de manera universal:
+ * - Con Google Oboe C++: Mediante búfer de callback de hardware de ultra baja latencia con SIMD NEON.
+ * - Con Android Media3: Mediante pipeline de AudioProcessor PCM en tiempo real integrado en ExoPlayer.
+ *
+ * Funcionalidades clave:
  * 1. Filtro Peaking Vocal: Eleva las frecuencias de inteligibilidad humana (1.5 kHz - 3.5 kHz)
  *    para que los diálogos de películas y series se entiendan a la perfección.
  * 2. Compresor Dinámico (DRC): Atenúa automáticamente explosiones y disparos ensordecedores
  *    mientras eleva susurros, ideal para ver cine de noche sin despertar a nadie.
- *
- * Si se está utilizando el motor Android Media3, estas funciones de DSP en tiempo real
- * se bloquean visualmente con un candado ya que requieren la infraestructura de procesamiento
- * de Google Oboe en C++.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun VoiceNightAudioSheet(
-    currentAudioEngine: AudioEngineType = AudioEngineType.OBOE,
+    currentAudioEngine: AudioEngineType = AudioEngineType.MEDIA3,
     onSwitchToOboe: () -> Unit = {},
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
-    // Estados locales reactivos conectados con el motor Oboe C++
+    // Estados locales reactivos conectados con el motor de audio Oboe / Media3
     var voiceClarityEnabled by remember { mutableStateOf(OboeAudioEngine.isVoiceClarityEnabled()) }
-    var voiceGain by remember { mutableFloatStateOf(0.75f) }
+    var voiceGain by remember { mutableFloatStateOf(OboeAudioEngine.voiceClarityGain) }
 
     var compressorEnabled by remember { mutableStateOf(OboeAudioEngine.isDynamicCompressorEnabled()) }
-    var compressorIntensity by remember { mutableFloatStateOf(0.80f) }
+    var compressorIntensity by remember { mutableFloatStateOf(OboeAudioEngine.compressorIntensity) }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -111,13 +111,13 @@ fun VoiceNightAudioSheet(
             ) {
                 Surface(
                     shape = RoundedCornerShape(10.dp),
-                    color = if (isOboeActive) Color(0xFF8B5CF6).copy(alpha = 0.2f) else Color(0xFFF59E0B).copy(alpha = 0.2f),
+                    color = if (isOboeActive) Color(0xFF8B5CF6).copy(alpha = 0.2f) else Color(0xFF0284C7).copy(alpha = 0.2f),
                     modifier = Modifier.size(42.dp)
                 ) {
                     Icon(
-                        imageVector = if (isOboeActive) Icons.Default.GraphicEq else Icons.Default.Lock,
+                        imageVector = Icons.Default.GraphicEq,
                         contentDescription = null,
-                        tint = if (isOboeActive) Color(0xFFA78BFA) else Color(0xFFFBBF24),
+                        tint = if (isOboeActive) Color(0xFFA78BFA) else Color(0xFF38BDF8),
                         modifier = Modifier
                             .padding(8.dp)
                             .size(26.dp)
@@ -136,11 +136,11 @@ fun VoiceNightAudioSheet(
                         )
                         Surface(
                             shape = RoundedCornerShape(4.dp),
-                            color = if (isOboeActive) Color(0xFF8B5CF6).copy(alpha = 0.25f) else Color(0xFFF59E0B).copy(alpha = 0.25f)
+                            color = if (isOboeActive) Color(0xFF8B5CF6).copy(alpha = 0.25f) else Color(0xFF0284C7).copy(alpha = 0.25f)
                         ) {
                             Text(
-                                text = if (isOboeActive) "OBOE C++" else "BLOQUEADO (MEDIA3)",
-                                color = if (isOboeActive) Color(0xFFC4B5FD) else Color(0xFFFBBF24),
+                                text = if (isOboeActive) "OBOE C++" else "MEDIA3 DSP",
+                                color = if (isOboeActive) Color(0xFFC4B5FD) else Color(0xFF7DD3FC),
                                 fontSize = 10.sp,
                                 fontWeight = FontWeight.Bold,
                                 modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
@@ -148,7 +148,7 @@ fun VoiceNightAudioSheet(
                         }
                     }
                     Text(
-                        text = if (isOboeActive) "Voces claras y compresión nocturna de rango dinámico" else "Funciones DSP no disponibles en el pipeline Media3",
+                        text = "Voces claras y compresión nocturna de rango dinámico",
                         style = MaterialTheme.typography.bodySmall,
                         color = Color.White.copy(alpha = 0.6f)
                     )
@@ -157,87 +157,52 @@ fun VoiceNightAudioSheet(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // BANNER DE BLOQUEO CON CANDADO (Si estamos en Media3)
-            if (!isOboeActive) {
-                Card(
-                    shape = RoundedCornerShape(14.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFF241A12)),
-                    border = BorderStroke(1.dp, Color(0xFFF59E0B).copy(alpha = 0.6f)),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 16.dp)
-                        .testTag("media3_locked_banner")
+            // BANNER INFORMATIVO DEL MOTOR ACTIVO (Universal, disponible en Media3 y Oboe)
+            Card(
+                shape = RoundedCornerShape(14.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = if (isOboeActive) Color(0xFF1E1A29) else Color(0xFF13202E)
+                ),
+                border = BorderStroke(1.dp, if (isOboeActive) Color(0xFF8B5CF6).copy(alpha = 0.35f) else Color(0xFF0284C7).copy(alpha = 0.35f)),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 16.dp)
+            ) {
+                Row(
+                    modifier = Modifier.padding(14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            Surface(
-                                shape = RoundedCornerShape(8.dp),
-                                color = Color(0xFFF59E0B).copy(alpha = 0.25f),
-                                modifier = Modifier.size(36.dp)
-                            ) {
-                                Box(contentAlignment = Alignment.Center) {
-                                    Icon(
-                                        imageVector = Icons.Default.Lock,
-                                        contentDescription = "Bloqueado",
-                                        tint = Color(0xFFFBBF24),
-                                        modifier = Modifier.size(20.dp)
-                                    )
-                                }
-                            }
-                            Column {
-                                Text(
-                                    text = "Función Bloqueada con Media3",
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 15.sp,
-                                    color = Color(0xFFFBBF24)
-                                )
-                                Text(
-                                    text = "Requiere el motor nativo Google Oboe C++",
-                                    fontSize = 11.sp,
-                                    color = Color.White.copy(alpha = 0.7f)
-                                )
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(10.dp))
-
-                        Text(
-                            text = "El Compresor Dinámico Nocturno (DRC) y el Filtro Peaking de Voces Claras requieren procesamiento en tiempo real de tramas PCM mediante algoritmos DSP en C++. Media3 estándar utiliza el pipeline del sistema y no cuenta con estos módulos de hardware.",
-                            fontSize = 12.sp,
-                            color = Color.White.copy(alpha = 0.85f),
-                            lineHeight = 17.sp
-                        )
-
-                        Spacer(modifier = Modifier.height(12.dp))
-
-                        Button(
-                            onClick = {
-                                onSwitchToOboe()
-                            },
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = Color(0xFFF59E0B),
-                                contentColor = Color.Black
-                            ),
-                            shape = RoundedCornerShape(10.dp),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .testTag("btn_unlock_with_oboe")
-                        ) {
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = if (isOboeActive) Color(0xFF8B5CF6).copy(alpha = 0.25f) else Color(0xFF0284C7).copy(alpha = 0.25f),
+                        modifier = Modifier.size(36.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
                             Icon(
-                                imageVector = Icons.Default.Audiotrack,
+                                imageVector = if (isOboeActive) Icons.Default.Audiotrack else Icons.Default.GraphicEq,
                                 contentDescription = null,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                text = "Activar Google Oboe C++ (Desbloquear)",
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 13.sp
+                                tint = if (isOboeActive) Color(0xFFA78BFA) else Color(0xFF38BDF8),
+                                modifier = Modifier.size(20.dp)
                             )
                         }
+                    }
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = if (isOboeActive) "Motor Activo: Google Oboe C++ (Nativo)" else "Motor Activo: Android Media3 (PCM Pipeline)",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.sp,
+                            color = if (isOboeActive) Color(0xFFC4B5FD) else Color(0xFF7DD3FC)
+                        )
+                        Text(
+                            text = if (isOboeActive)
+                                "Procesamiento de ultra baja latencia en búfer de hardware con aceleración matemática SIMD NEON."
+                            else
+                                "Procesamiento en tiempo real sobre el flujo PCM de Media3 integrado sin alterar la sincronía audio/video.",
+                            fontSize = 11.sp,
+                            color = Color.White.copy(alpha = 0.75f),
+                            lineHeight = 15.sp
+                        )
                     }
                 }
             }
@@ -245,8 +210,7 @@ fun VoiceNightAudioSheet(
             // SECCIÓN 1: MODO VOCES CLARAS (CLEAR DIALOGUE)
             Card(
                 shape = RoundedCornerShape(14.dp),
-                colors = CardDefaults.cardColors(containerColor = if (isOboeActive) Color(0xFF222228) else Color(0xFF1A1A1E)),
-                border = if (!isOboeActive) BorderStroke(1.dp, Color.White.copy(alpha = 0.06f)) else null,
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF222228)),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
@@ -261,41 +225,28 @@ fun VoiceNightAudioSheet(
                             modifier = Modifier.weight(1f)
                         ) {
                             Icon(
-                                imageVector = if (isOboeActive) Icons.Default.RecordVoiceOver else Icons.Default.Lock,
+                                imageVector = Icons.Default.RecordVoiceOver,
                                 contentDescription = null,
-                                tint = if (!isOboeActive) Color(0xFFF59E0B).copy(alpha = 0.6f) else if (voiceClarityEnabled) Color(0xFFA78BFA) else Color.White.copy(alpha = 0.4f),
+                                tint = if (voiceClarityEnabled) Color(0xFFA78BFA) else Color.White.copy(alpha = 0.4f),
                                 modifier = Modifier.size(22.dp)
                             )
                             Column {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                ) {
-                                    Text(
-                                        text = "Modo Voces Claras",
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = if (isOboeActive) Color.White else Color.White.copy(alpha = 0.5f)
-                                    )
-                                    if (!isOboeActive) {
-                                        Icon(
-                                            imageVector = Icons.Default.Lock,
-                                            contentDescription = "Bloqueado",
-                                            tint = Color(0xFFF59E0B),
-                                            modifier = Modifier.size(14.dp)
-                                        )
-                                    }
-                                }
                                 Text(
-                                    text = if (isOboeActive) "Realza diálogos y consonantes (1.5 - 3.5 kHz)" else "Bloqueado • Requiere Google Oboe C++",
+                                    text = "Modo Voces Claras",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = Color.White
+                                )
+                                Text(
+                                    text = "Realza diálogos y consonantes (1.5 - 3.5 kHz)",
                                     style = MaterialTheme.typography.bodySmall,
-                                    color = if (isOboeActive) Color.White.copy(alpha = 0.55f) else Color(0xFFFBBF24).copy(alpha = 0.7f)
+                                    color = Color.White.copy(alpha = 0.6f)
                                 )
                             }
                         }
                         Switch(
-                            checked = voiceClarityEnabled && isOboeActive,
-                            enabled = isOboeActive,
+                            checked = voiceClarityEnabled,
+                            enabled = true,
                             onCheckedChange = { checked ->
                                 voiceClarityEnabled = checked
                                 OboeAudioEngine.setVoiceClarity(checked, voiceGain)
@@ -304,15 +255,13 @@ fun VoiceNightAudioSheet(
                                 checkedThumbColor = Color(0xFF16161A),
                                 checkedTrackColor = Color(0xFF8B5CF6),
                                 uncheckedThumbColor = Color.White.copy(alpha = 0.6f),
-                                uncheckedTrackColor = Color(0xFF33333C),
-                                disabledUncheckedTrackColor = Color(0xFF26262C),
-                                disabledUncheckedThumbColor = Color.White.copy(alpha = 0.25f)
+                                uncheckedTrackColor = Color(0xFF33333C)
                             ),
                             modifier = Modifier.testTag("voice_clarity_switch")
                         )
                     }
 
-                    if (voiceClarityEnabled && isOboeActive) {
+                    if (voiceClarityEnabled) {
                         Spacer(modifier = Modifier.height(12.dp))
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -320,12 +269,12 @@ fun VoiceNightAudioSheet(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = "Ganancia de Frecuencias Vocales",
+                                text = "Ganancia Vocal",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = Color.White.copy(alpha = 0.8f)
                             )
                             Text(
-                                text = "+${(voiceGain * 8.0f).roundToInt()} dB",
+                                text = "+${(voiceGain * 6.0f).roundToInt()} dB",
                                 style = MaterialTheme.typography.bodySmall,
                                 fontWeight = FontWeight.Bold,
                                 color = Color(0xFFA78BFA)
@@ -337,7 +286,7 @@ fun VoiceNightAudioSheet(
                                 voiceGain = newGain
                                 OboeAudioEngine.setVoiceClarity(true, newGain)
                             },
-                            valueRange = 0.1f..1.0f,
+                            valueRange = 0.2f..1.2f,
                             steps = 9,
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -372,8 +321,7 @@ fun VoiceNightAudioSheet(
             // SECCIÓN 2: COMPRESOR DINÁMICO (MODO NOCHE / DRC)
             Card(
                 shape = RoundedCornerShape(14.dp),
-                colors = CardDefaults.cardColors(containerColor = if (isOboeActive) Color(0xFF222228) else Color(0xFF1A1A1E)),
-                border = if (!isOboeActive) BorderStroke(1.dp, Color.White.copy(alpha = 0.06f)) else null,
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF222228)),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
@@ -388,41 +336,28 @@ fun VoiceNightAudioSheet(
                             modifier = Modifier.weight(1f)
                         ) {
                             Icon(
-                                imageVector = if (isOboeActive) Icons.Default.Nightlight else Icons.Default.Lock,
+                                imageVector = Icons.Default.Nightlight,
                                 contentDescription = null,
-                                tint = if (!isOboeActive) Color(0xFFF59E0B).copy(alpha = 0.6f) else if (compressorEnabled) Color(0xFF38BDF8) else Color.White.copy(alpha = 0.4f),
+                                tint = if (compressorEnabled) Color(0xFF38BDF8) else Color.White.copy(alpha = 0.4f),
                                 modifier = Modifier.size(22.dp)
                             )
                             Column {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                ) {
-                                    Text(
-                                        text = "Compresor Dinámico (Modo Noche)",
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = if (isOboeActive) Color.White else Color.White.copy(alpha = 0.5f)
-                                    )
-                                    if (!isOboeActive) {
-                                        Icon(
-                                            imageVector = Icons.Default.Lock,
-                                            contentDescription = "Bloqueado",
-                                            tint = Color(0xFFF59E0B),
-                                            modifier = Modifier.size(14.dp)
-                                        )
-                                    }
-                                }
                                 Text(
-                                    text = if (isOboeActive) "Atenúa explosiones y eleva susurros automáticamente" else "Bloqueado • Requiere Google Oboe C++",
+                                    text = "Compresor Dinámico (Modo Noche)",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = Color.White
+                                )
+                                Text(
+                                    text = "Atenúa explosiones y eleva susurros automáticamente",
                                     style = MaterialTheme.typography.bodySmall,
-                                    color = if (isOboeActive) Color.White.copy(alpha = 0.55f) else Color(0xFFFBBF24).copy(alpha = 0.7f)
+                                    color = Color.White.copy(alpha = 0.6f)
                                 )
                             }
                         }
                         Switch(
-                            checked = compressorEnabled && isOboeActive,
-                            enabled = isOboeActive,
+                            checked = compressorEnabled,
+                            enabled = true,
                             onCheckedChange = { checked ->
                                 compressorEnabled = checked
                                 OboeAudioEngine.setDynamicCompressor(checked, compressorIntensity)
@@ -431,15 +366,13 @@ fun VoiceNightAudioSheet(
                                 checkedThumbColor = Color(0xFF16161A),
                                 checkedTrackColor = Color(0xFF38BDF8),
                                 uncheckedThumbColor = Color.White.copy(alpha = 0.6f),
-                                uncheckedTrackColor = Color(0xFF33333C),
-                                disabledUncheckedTrackColor = Color(0xFF26262C),
-                                disabledUncheckedThumbColor = Color.White.copy(alpha = 0.25f)
+                                uncheckedTrackColor = Color(0xFF33333C)
                             ),
                             modifier = Modifier.testTag("dynamic_compressor_switch")
                         )
                     }
 
-                    if (compressorEnabled && isOboeActive) {
+                    if (compressorEnabled) {
                         Spacer(modifier = Modifier.height(12.dp))
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -508,14 +441,6 @@ fun VoiceNightAudioSheet(
                     fontWeight = FontWeight.Bold,
                     color = Color.White.copy(alpha = 0.85f)
                 )
-                if (!isOboeActive) {
-                    Icon(
-                        imageVector = Icons.Default.Lock,
-                        contentDescription = "Bloqueado",
-                        tint = Color(0xFFF59E0B),
-                        modifier = Modifier.size(14.dp)
-                    )
-                }
             }
 
             val audioPresets = listOf(
@@ -527,19 +452,15 @@ fun VoiceNightAudioSheet(
 
             audioPresets.forEach { (name, desc, statePair) ->
                 val (voiceOn, compOn) = statePair
-                val isSelected = isOboeActive && (voiceClarityEnabled == voiceOn) && (compressorEnabled == compOn)
+                val isSelected = (voiceClarityEnabled == voiceOn) && (compressorEnabled == compOn)
 
                 Surface(
                     shape = RoundedCornerShape(12.dp),
-                    color = when {
-                        !isOboeActive -> Color(0xFF1B1B20)
-                        isSelected -> Color(0xFF8B5CF6).copy(alpha = 0.18f)
-                        else -> Color(0xFF222228)
-                    },
+                    color = if (isSelected) Color(0xFF8B5CF6).copy(alpha = 0.18f) else Color(0xFF222228),
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(vertical = 4.dp)
-                        .clickable(enabled = isOboeActive) {
+                        .clickable {
                             voiceClarityEnabled = voiceOn
                             compressorEnabled = compOn
                             OboeAudioEngine.setVoiceClarity(voiceOn, voiceGain)
@@ -558,16 +479,12 @@ fun VoiceNightAudioSheet(
                                 text = name,
                                 style = MaterialTheme.typography.bodyMedium,
                                 fontWeight = FontWeight.SemiBold,
-                                color = when {
-                                    !isOboeActive -> Color.White.copy(alpha = 0.45f)
-                                    isSelected -> Color(0xFFC4B5FD)
-                                    else -> Color.White
-                                }
+                                color = if (isSelected) Color(0xFFC4B5FD) else Color.White
                             )
                             Text(
-                                text = if (isOboeActive) desc else "Bloqueado con Media3",
+                                text = desc,
                                 style = MaterialTheme.typography.bodySmall,
-                                color = if (isOboeActive) Color.White.copy(alpha = 0.55f) else Color(0xFFFBBF24).copy(alpha = 0.6f)
+                                color = Color.White.copy(alpha = 0.55f)
                             )
                         }
                         if (isSelected) {
@@ -576,13 +493,6 @@ fun VoiceNightAudioSheet(
                                 contentDescription = null,
                                 tint = Color(0xFFA78BFA),
                                 modifier = Modifier.size(20.dp)
-                            )
-                        } else if (!isOboeActive) {
-                            Icon(
-                                imageVector = Icons.Default.Lock,
-                                contentDescription = "Bloqueado",
-                                tint = Color(0xFFF59E0B).copy(alpha = 0.6f),
-                                modifier = Modifier.size(16.dp)
                             )
                         }
                     }
@@ -605,19 +515,22 @@ fun VoiceNightAudioSheet(
                         Icon(
                             imageVector = Icons.Default.VolumeUp,
                             contentDescription = null,
-                            tint = Color(0xFF8B5CF6),
+                            tint = if (isOboeActive) Color(0xFF8B5CF6) else Color(0xFF38BDF8),
                             modifier = Modifier.size(18.dp)
                         )
                         Text(
-                            text = "Procesamiento nativo de 0 ms de retraso",
+                            text = "Procesamiento nativo con sincronía de 0 ms",
                             style = MaterialTheme.typography.bodySmall,
                             fontWeight = FontWeight.Bold,
-                            color = Color(0xFFC4B5FD)
+                            color = if (isOboeActive) Color(0xFFC4B5FD) else Color(0xFF7DD3FC)
                         )
                     }
                     Spacer(modifier = Modifier.height(6.dp))
                     Text(
-                        text = "El algoritmo de compresión y filtrado vocal se ejecuta directamente dentro del bucle de callback de audio C++ de Google Oboe con enteros y coma flotante acelerada por hardware (NEON). No introduce latencia ni desfase labial con la imagen.",
+                        text = if (isOboeActive)
+                            "El algoritmo de compresión y filtrado vocal se ejecuta directamente dentro del bucle de callback C++ de Google Oboe con enteros y coma flotante acelerada por hardware (NEON). No introduce latencia ni desfase labial."
+                        else
+                            "El algoritmo de compresión y realce vocal se aplica en el pipeline PCM de Media3 en tiempo real, manteniendo perfecta sincronización labial y bajo impacto térmico en el dispositivo.",
                         style = MaterialTheme.typography.bodySmall,
                         color = Color.White.copy(alpha = 0.65f),
                         lineHeight = 18.sp

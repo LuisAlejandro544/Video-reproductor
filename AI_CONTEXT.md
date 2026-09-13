@@ -51,8 +51,12 @@ Este archivo proporciona el contexto técnico, arquitectónico y operativo neces
 ### 2. Procesamiento de Audio en Media3 (`OboeAudioProcessor`)
 - Extiende de `BaseAudioProcessor` de Media3.
 - Monitorea el formato de entrada (frecuencia de muestreo y número de canales).
-- Cuando el motor seleccionado es `AudioEngineType.OBOE`, las tramas PCM son redirigidas a `OboeAudioEngine.writePcmData(...)` y el búfer de salida para el `AudioTrack` estándar se vacía (`replaceOutputBuffer(0)`), silenciando la salida tradicional sin detener el flujo de reloj de ExoPlayer.
-- Cuando el motor es `AudioEngineType.MEDIA3`, las tramas pasan sin alteración hacia el `AudioTrack` habitual.
+- Cuando el motor seleccionado es `AudioEngineType.OBOE`, las tramas PCM son redirigidas a `OboeAudioEngine.writePcmData(...)` y el búfer de salida para el `AudioTrack` estándar se vacía (`replaceOutputBuffer(0)`), silenciando la salida tradicional sin detener el flujo de reloj de ExoPlayer. El procesamiento DSP (Filtro Peaking y DRC) y enrutamiento de canales se ejecutan en C++ con aceleración SIMD NEON.
+- Cuando el motor es `AudioEngineType.MEDIA3`, `OboeAudioProcessor` ejecuta de manera ultra-eficiente el pipeline DSP completo directamente en el búfer de entrada PCM de 16 bits:
+  - **Enrutamiento de Canales:** Mapeo directo estéreo, mezcla ponderada mono `(L + R) / 2` o retardo temporal Haas 3D.
+  - **Voces Claras (Peaking Filter):** Realce paramétrico en banda vocal (1.5 kHz a 3.5 kHz) con filtro IIR de segundo orden (biquad).
+  - **Compresor Dinámico Nocturno (DRC):** Detección de picos en tiempo real, atenuación adaptativa con curva suave y ganancia de recuperación (*makeup gain*) para diálogos bajos.
+  - El búfer procesado se despacha a la salida de `AudioTrack` con 0 ms de retraso perceptual y perfecta sincronía labial.
 
 ### 3. Interfaz de Usuario en Jetpack Compose y Material You
 - Toda la interfaz sigue rigurosamente las especificaciones de **Material Design 3 (M3)** e integra soporte completo para **Material You (Dynamic Color)**:
@@ -93,6 +97,17 @@ Este archivo proporciona el contexto técnico, arquitectónico y operativo neces
 - `VideoUtils.resolveVideoMetadata` y `VideoUtils.getVideoDurationMs` utilizan `MediaMetadataRetriever` para calcular la duración exacta del video en milisegundos y formatearla a `mm:ss` o `hh:mm:ss`.
 - `VideoPlayerScreen` informa periódicamente el progreso (`currentPositionMs` y `totalDurationMs`), actualizando la base de datos para mostrar barras de avance y permitir reanudación instantánea con un toque desde la pantalla principal (`VideoImportScreen`).
 
+### 5.1. Sistema de Efectos Sonoros Nativos de Interfaz (`SoundEffectManager`)
+- **Gestión Asíncrona con SoundPool de Android:**
+  - Implementado en `com.example.audio.SoundEffectManager` como singleton/administrador de audio para efectos cortos de UI.
+  - Carga el recurso `R.raw.ui_click` (audio Ogg Vorbis a 48 kHz mono) mediante `AudioAttributes.USAGE_ASSISTANCE_SONIFICATION` y `CONTENT_TYPE_SONIFICATION`.
+  - Callback `setOnLoadCompleteListener` para garantizar que no se produzcan excepciones de audio no cargado.
+  - Control de volumen calibrado (0.85f) y reproducción sin bloqueos del hilo principal (`playClickSound()`).
+  - Persistencia de la preferencia del usuario en `AppPreferences.isSoundEffectsEnabled` y exposición reactiva en `MainViewModel.isSoundEffectsEnabled`.
+  - Integración en navegación entre pantallas, botones principales, conmutadores, diálogo de selección y gestos HUD.
+- **Herramienta de Conversión de Audio (`scripts/convert_audio_asset.sh`):**
+  - Script bash ejecutable basado en `ffmpeg` para transcodificar archivos WAV, MP3 o FLAC a formato Ogg Vorbis mono a 48 kHz con tasa de bits reducida para minimizar el peso del APK y el consumo de RAM.
+
 ### 6. Sistema de Gestos Táctiles, Avance Rápido a 2X y Modo Inmersivo
 - **Modo Inmersivo Automático (Edge-to-Edge Sin Distracciones):**
   - Implementado mediante `WindowInsetsControllerCompat` y `WindowInsetsCompat.Type.systemBars()` con `systemBarsBehavior = BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE`.
@@ -108,7 +123,13 @@ Este archivo proporciona el contexto técnico, arquitectónico y operativo neces
   - Se utiliza una capa interactiva sobre la vista de video nativa para discriminar toques simples de arrastres verticales sin colisiones de eventos.
   - **Mitad Izquierda del Canvas:** Ajusta progresivamente el brillo de pantalla de la ventana (`WindowManager.LayoutParams.screenBrightness`) en un rango de `0.01f` a `1.0f`. Al salir de la pantalla o cerrar el reproductor, se restaura automáticamente el valor predeterminado del sistema (`BRIGHTNESS_OVERRIDE_NONE`).
   - **Mitad Derecha del Canvas:** Modifica directamente el volumen físico multimedia del dispositivo (`AudioManager.STREAM_MUSIC`), sincronizando el estado con el reproductor y reactivando el audio si se encontraba silenciado.
-  - **Indicador Flotante Minimalista (`MinimalistGestureIndicator`):** Cápsula elegante que aparece flotando en el lateral activo exclusivamente mientras se realiza el gesto (`AnimatedVisibility` con `fadeIn` y `scaleIn`). Incorpora icono dinámico contextual (según tramos de volumen/brillo), barra vertical graduada con gradiente y porcentaje numérico. Se desvanece suavemente 1 segundo después de finalizar el gesto.
+  - **Indicadores Gestuales Dinámicos (`PlayerHudIndicators`):**
+    - **Medidores de Brillo y Volumen (`MinimalistGestureIndicator`):** Cápsula reactiva que interpola la fracción con amortiguación suave de resorte (`spring`), altera su anchura adaptativamente en los extremos, escala dinámicamente el icono con rebote y muestra un resplandor luminoso perimetral sincronizado con el nivel actual.
+    - **Indicador de Doble Toque (+5s / -5s) (`DoubleTapSeekIndicator`):** Animación de escala elástica con rebote y aura de neón turquesa al activarse.
+    - **Insignia Viva de Avance Rápido 2X (`FastForward2xBadge`):** Animación pulsante continua de escala y resplandor cíclico con `rememberInfiniteTransition` mientras el usuario mantiene pulsado.
+- **Transición Fluida entre Pantallas (`AnimatedContent` en `MainActivity`):**
+  - Transición cinemática vertical ascendente/descendente para entrar y salir del reproductor de video.
+  - Deslizamiento horizontal fluido con desvanecimiento simultáneo para el panel de configuración.
 
 ### 6.1. Motor Oboe Optimizado con Búfer Circular y Decodificadores FFmpeg Puros
 - **Búfer de Anillo Estático en C++:** Sustitución de asignaciones dinámicas `std::vector` por un búfer estático preasignado de 192.000 muestras (`kRingBufferSize`). Los punteros atómicos de lectura y escritura (`std::atomic<size_t>`) eliminan la contención de memoria en el hilo de audio en tiempo real de AAudio.
@@ -273,13 +294,16 @@ Este archivo proporciona el contexto técnico, arquitectónico y operativo neces
   - Mediante `CompositionLocalProvider(LocalDensity provides Density(density = originalDensity.density, fontScale = 1.0f))`, toda la jerarquía de Jetpack Compose adopta una escala de fuente exacta `1.0f`.
   - La densidad de píxeles (`dp`) del dispositivo se mantiene intacta, pero el escalado de accesibilidad de texto del sistema (`sp`) se fija al tamaño óptimo y equilibrado del diseño de la aplicación.
 
-### 23. Bloqueo Visual con Candado de Funciones Exclusivas de Google Oboe en Media3
-- **Diferenciación Arquitectónica de Motores:**
-  - **Google Oboe C++:** Es el único motor con pipeline DSP en tiempo real sobre tramas PCM (Filtro Peaking de Voces Claras y Compresor Dinámico Nocturno DRC).
-  - **Android Media3:** Utiliza el pipeline estándar del sistema Android sin el módulo de efectos por hardware en C++.
-- **Mecanismo de Candado en UI:**
-  - En `PlayerToolsSideSheet.kt`: Al estar seleccionado Media3, la opción *Audio DSP Inteligente* exhibe un icono de candado (`Icons.Default.Lock`), un distintivo ámbar `Bloqueado con Media3` y una descripción indicando que requiere Google Oboe C++.
-  - En `VoiceNightAudioSheet.kt`: Se despliega un banner superior de advertencia estética con candado, se bloquean los interruptores (`Switch(enabled = false)`) y presets rápidos, y se provee un botón directo de acción: `"Activar Google Oboe C++ (Desbloquear)"`, permitiendo alternar el motor y habilitar el procesamiento en tiempo real con un solo toque.
+### 23. Audio DSP Inteligente Universal en Tiempo Real (Google Oboe C++ y Android Media3)
+- **Evolución Arquitectónica de Motores:**
+  - Inicialmente, el procesamiento DSP en tiempo real (Voces Claras y Compresor Dinámico Nocturno DRC) estaba confinado exclusivamente al bucle C++ de Google Oboe.
+  - Ahora, ambos motores (**Google Oboe C++** y **Android Media3**) cuentan con procesamiento DSP acústico de alta velocidad en tiempo real.
+- **Implementación Multicapa:**
+  - **En Google Oboe C++:** Se ejecuta mediante filtros optimizados con aceleración SIMD NEON dentro del bucle de renderizado nativo C++, brindando latencia de audio ultra-baja y precisión bit a bit.
+  - **En Android Media3:** Se procesa a través de la etapa de transformación PCM en `OboeAudioProcessor`, aplicando realce de frecuencias vocales y compresión adaptativa de rango dinámico directamente sobre los paquetes de audio antes de su entrega al `AudioTrack`.
+- **Experiencia de Usuario Desbloqueada y Universal:**
+  - Se eliminaron los candados de bloqueo e impedimentos de la interfaz de usuario en `PlayerToolsSideSheet.kt` y `VoiceNightAudioSheet.kt`.
+  - La hoja de configuración de DSP informa con claridad qué motor se encuentra activo en tiempo de ejecución (Oboe C++ o Media3), permite ajustar la ganancia vocal (0 a 12 dB) y el ratio de compresión nocturna con sincronización en caliente y persistencia garantizada.
 
 ### 24. Aceleración con Núcleo Rust y Renderizado de Subtítulos Complejos SSA/ASS (Fase 5)
 - **Módulo Nativo Rust (`rust_core` / `libnova_rust.so`):**
@@ -323,6 +347,31 @@ Este archivo proporciona el contexto técnico, arquitectónico y operativo neces
     - Compatible con las 4 arquitecturas del proyecto: 32 bits (`armeabi-v7a`, `x86`) y 64 bits (`arm64-v8a`, `x86_64`).
   - **Telemetría y Diagnóstico Visual:**
     - `TelemetrySubScreen.kt` incluye una tarjeta de telemetría gráfica en tiempo real que expone el estado de Vulkan, el pipeline activo (OpenGL ES con OES Zero-Copy), el nombre de la GPU física y la versión del controlador.
+
+### 27. Asistente de Bienvenida Guiado y Configuración Inicial (Onboarding Flow)
+- **Motivación y Arquitectura:**
+  - Al abrir la aplicación por primera vez (`AppPreferences.isOnboardingCompleted == false`), `MainActivity` enruta al usuario a `AppScreen.ONBOARDING` (`OnboardingScreen.kt`).
+  - Diseñado con Jetpack Compose siguiendo las especificaciones de Material Design 3 (M3), implementando `StepProgressIndicator`, transiciones animadas y navegación fluida bidireccional (avanzar y retroceder).
+  - Consta de 6 pasos modulares e independientes ubicados en `com.example.ui.onboarding`:
+    1. `WelcomePermissionsStep`: Presentación del reproductor, garantía de privacidad local y solicitud interactiva de permisos de lectura de medios (`READ_MEDIA_VIDEO` en Android 13+ / `READ_EXTERNAL_STORAGE` en Android 8 a 12).
+    2. `AudioEngineSelectionStep`: Comparativa técnica transparente entre Android Media3 (estabilidad y Bluetooth) y Google Oboe (C++ nativo de ultra baja latencia), desglosando pros y contras.
+    3. `GraphicsEngineSelectionStep`: Detección en vivo de Vulkan 1.1+. Si está soportado, permite elegir entre OpenGL ES 3.0+ y Vulkan 1.1+ (indicando explícitamente que Vulkan se encuentra en desarrollo activo de funciones). Si no está soportado, selecciona OpenGL ES explicando las limitaciones del hardware.
+    4. `ThemeSelectionStep`: Configuración visual del tema (Oscuro para pantallas OLED y cine, Claro para luz solar diurna y Sincronizado con el sistema) junto con el conmutador de Material You (color dinámico en Android 12+).
+    5. `MessagingScanStep`: Elección entre activar el descubrimiento automático en carpetas de mensajería (WhatsApp y Telegram) o el Modo Privado (solo importación manual mediante el explorador de archivos o la galería).
+    6. `SummaryStep`: Resumen de las opciones configuradas y botón de confirmación que persiste todos los valores en `AppPreferences` y transiciona hacia `AppScreen.HOME`.
+
+### 28. Selección de Motor Gráfico (`GraphicsEngineType`) y Compatibilidad
+- **Enum `GraphicsEngineType`:** Define `OPENGL_ES` (predeterminado probado con ecualizador, shaders FSR y Anime4K) y `VULKAN` (pipeline experimental de bajo nivel para reducción de temperatura y sobrecarga).
+- **Advertencia al Usuario:** La interfaz informa con total claridad técnica que Vulkan 1.1+ se encuentra en fase de desarrollo activo para funciones de procesamiento de video, previniendo expectativas erróneas.
+- **Persistencia:** La selección se guarda en disco a través de `AppPreferences.selectedGraphicsEngine` y se expone de forma reactiva en `MainViewModel`.
+
+### 29. Descubrimiento Inteligente de Videos de Mensajería (`MessagingMediaScanner`)
+- **Funcionamiento Técnico:**
+  - `MessagingMediaScanner.scanMessagingVideos()` consulta `MediaStore.Video.Media.EXTERNAL_CONTENT_URI` con proyección de `_ID`, `DISPLAY_NAME`, `SIZE`, `DURATION` y `DATA` (ruta relativa/absoluta).
+  - Filtra rutas conocidas de mensajería: `/WhatsApp/Media/WhatsApp Video/`, `/Android/media/com.whatsapp/WhatsApp/Media/WhatsApp Video/`, `/Telegram/Telegram Video/` y `/Movies/Telegram/`.
+  - Convierte los registros encontrados en `VideoEntity` y los inserta de manera no destructiva (`videoDao.insertVideo(...)`) verificando que no existan duplicados previamente registrados.
+- **Privacidad Absoluta:** No envía metadatos ni archivos a servidores externos ni requiere acceso a internet. Todo el proceso es estrictamente local en el almacenamiento del dispositivo.
+- **Integración en Interfaz (`VideoImportScreen`):** Si el usuario activó la opción de mensajería, se muestra una tarjeta visual en la parte superior de la biblioteca que permite consultar el estado del escaneo y refrescar manualmente los videos de WhatsApp y Telegram con un toque.
 
 
 

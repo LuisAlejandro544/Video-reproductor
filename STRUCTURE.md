@@ -13,7 +13,8 @@ Este documento detalla la organización de carpetas, responsabilidades de cada m
 │   └── workflows/
 │       └── build-debug.yml      # Flujo de compilación limpia de APK Debug en la nube
 ├── scripts/                     # Scripts utilitarios del proyecto
-│   └── generate_debug_keystore.sh # Generador no interactivo de 'debug.keystore' para CI/CD
+│   ├── generate_debug_keystore.sh # Generador no interactivo de 'debug.keystore' para CI/CD
+│   └── convert_audio_asset.sh   # Convertidor y optimizador de muestras de audio para la app (FFmpeg -> Ogg Vorbis mono 48kHz)
 ├── README.md                    # Documentación general del proyecto
 ├── ROADMAP.md                   # Hoja de ruta y próximos hitos técnicos
 ├── STRUCTURE.md                 # Mapa de arquitectura y flujo de componentes
@@ -48,25 +49,27 @@ Este documento detalla la organización de carpetas, responsabilidades de cada m
 │       │   │       └── VideoShaders.h # GLSL Shaders centralizados: OES, Color/Nitidez, Pillarbox Blur, AMD FSR 1.0 (EASU+RCAS) y Anime4K
 │       │   │
 │       │   ├── java/com/example/     # Código fuente Kotlin (UI y Lógica)
-│       │   │   ├── MainActivity.kt   # Actividad raíz y enrutador de pantallas
+│       │   │   ├── MainActivity.kt   # Actividad raíz, orquestador de UI y transiciones cinemáticas AnimatedContent
 │       │   │   │
 │       │   │   ├── audio/            # Capa de integración de audio nativo y decodificación FFmpeg
 │       │   │   │   ├── AudioChannelMode.kt    # Enum: STEREO, MONO, SPATIAL_HAAS (Efecto Haas 3D)
 │       │   │   │   ├── AudioEngineType.kt     # Enum: OBOE vs MEDIA3
-│       │   │   │   ├── OboeAudioEngine.kt     # Wrapper JNI con flush() y control de volumen/DSP nativo
-│       │   │   │   └── OboeAudioProcessor.kt  # Interceptor PCM de Media3 hacia Oboe con vaciado sincronizado en onFlush/onReset y conversión mono-estéreo
+│       │   │   │   ├── OboeAudioEngine.kt     # Wrapper JNI con flush(), control de volumen y DSP nativo C++
+│       │   │   │   ├── OboeAudioProcessor.kt  # Procesador de audio universal Media3/Oboe con soporte DSP en tiempo real (Voces Claras, DRC, Mono, Haas 3D)
+│       │   │   │   └── SoundEffectManager.kt  # Gestor de efectos sonoros nativos (SoundPool) para retroalimentación táctil de interfaz
 │       │   │   │
 │       │   │   ├── opengl/           # Capa de renderizado acelerado por GPU
 │       │   │   │   ├── NativeVideoFilter.kt   # Puente JNI con VideoColorEngine en C++
 │       │   │   │   ├── VideoEqualizerState.kt # Modelo de parámetros de ecualización, modo sol, descanso visual, pillarbox blur, AMD FSR 1.0 y Anime4kMode
 │       │   │   │   └── OpenGLVideoSurface.kt  # GLSurfaceView.Renderer (doble paso con Pillarbox Blur, Modo Sol, AMD FSR 1.0 y Anime4K) y VideoPlayerView
 │       │   │   │
-│       │   │   ├── vulkan/           # Capa de capacidades e infraestructura Vulkan 1.1+ (Fase 6)
+│       │   │   ├── vulkan/           # Capa de capacidades e infraestructura Vulkan 1.1+ (Fase 6 y 7)
+│       │   │   │   ├── GraphicsEngineType.kt  # Enum: OPENGL_ES vs VULKAN con persistencia
 │       │   │   │   └── VulkanCapabilities.kt  # Detección de FEATURE_VULKAN_HARDWARE_VERSION/LEVEL y puente JNI hacia el driver C++
 │       │   │   │
 │       │   │   ├── data/             # Persistencia local con Room (SQLite v2) y SharedPreferences
 │       │   │   │   ├── AppDatabase.kt         # Base de datos Room singleton con esquema v2
-│       │   │   │   ├── AppPreferences.kt      # Almacenamiento persistente de configuraciones (motor de audio Media3/Oboe)
+│       │   │   │   ├── AppPreferences.kt      # Almacenamiento persistente de configuraciones (motores, tema, bienvenida, mensajería)
 │       │   │   │   ├── VideoDao.kt            # Operaciones reactivas DAO con Flow
 │       │   │   │   ├── VideoEntity.kt         # Entidad persistente ampliada: progreso y 18 configuraciones por video
 │       │   │   │   └── VideoRepository.kt     # Abstracción y operaciones asíncronas
@@ -93,16 +96,27 @@ Este documento detalla la organización de carpetas, responsabilidades de cada m
 │       │   │   │   ├── MainViewModel.kt       # ViewModel central de la biblioteca e importados con StateFlow de audio
 │       │   │   │   ├── PillarboxBlurSheet.kt  # Pantalla exclusiva e independiente de desenfoque de fondo vertical (Pillarbox)
 │       │   │   │   ├── PlaybackSpeedSheet.kt  # Pantalla exclusiva e independiente de velocidad de reproducción (hasta 2x)
-│       │   │   │   ├── PlayerToolsSideSheet.kt # Panel lateral con bloqueo reactivo (candado) según el motor activo
+│       │   │   │   ├── PlayerToolsSideSheet.kt # Panel lateral interactivo con acceso directo a herramientas del reproductor
 │       │   │   │   ├── SettingsScreen.kt      # Coordinador principal de configuración con navegación Hub-and-Spoke
 │       │   │   │   ├── StereoMonoSheet.kt     # Pantalla exclusiva e independiente de enrutamiento estéreo/mono y efecto Haas 3D
 │       │   │   │   ├── SubtitlesBottomSheet.kt # Panel modal de selección de subtítulos internos/externos y tamaño tipográfico
 │       │   │   │   ├── SunModeSheet.kt        # Pantalla exclusiva e independiente de Modo Sol Extremo y Accesibilidad en GPU
 │       │   │   │   ├── VideoEqualizerSheet.kt # Pantalla exclusiva e independiente de ecualización de video (color, nitidez, descanso)
-│       │   │   │   ├── VideoImportScreen.kt   # Coordinador modular de biblioteca e importación de videos
+│       │   │   │   ├── VideoImportScreen.kt   # Coordinador modular de biblioteca e importación de videos con tarjeta de mensajería
 │       │   │   │   ├── VideoPlayerScreen.kt   # Coordinador modular de reproducción con ExoPlayer y OpenGL
 │       │   │   │   ├── VideoSourceDialog.kt   # Diálogo para alternar Galería / Gestor de archivos
-│       │   │   │   ├── VoiceNightAudioSheet.kt # Pantalla exclusiva de DSP en C++ con candado y desbloqueo para Media3
+│       │   │   │   ├── VoiceNightAudioSheet.kt # Pantalla interactiva de Audio Inteligente DSP (Voces Claras y DRC para Oboe C++ y Media3)
+│       │   │   │   │
+│       │   │   │   ├── onboarding/       # Asistente guiado de configuración inicial (Onboarding)
+│       │   │   │   │   ├── AudioEngineSelectionStep.kt    # Paso 2: Selección Oboe vs Media3 con pros y contras
+│       │   │   │   │   ├── GraphicsEngineSelectionStep.kt # Paso 3: Selección OpenGL ES vs Vulkan 1.1+ adaptativo
+│       │   │   │   │   ├── MessagingScanStep.kt           # Paso 5: Elección de escaneo de WhatsApp/Telegram o Privado
+│       │   │   │   │   ├── OnboardingComponents.kt        # Componentes UI compartidos (indicador de progreso, tarjeta con pros/contras)
+│       │   │   │   │   ├── OnboardingScreen.kt            # Coordinador del flujo completo con animaciones
+│       │   │   │   │   ├── OnboardingStep.kt              # Enum de pasos secuenciales del asistente
+│       │   │   │   │   ├── SummaryStep.kt                 # Paso 6: Resumen de configuración elegida y confirmación
+│       │   │   │   │   ├── ThemeSelectionStep.kt          # Paso 4: Selección de tema y Material You dinámico
+│       │   │   │   │   └── WelcomePermissionsStep.kt      # Paso 1: Bienvenida y solicitud interactiva de permisos
 │       │   │   │   │
 │       │   │   │   ├── library/          # Módulos desacoplados de la biblioteca de medios
 │       │   │   │   │   ├── ImportQuickCard.kt    # Tarjeta de importación rápida con selector SAF / Galería
@@ -113,7 +127,7 @@ Este documento detalla la organización de carpetas, responsabilidades de cada m
 │       │   │   │   │
 │       │   │   │   ├── player/           # Módulos desacoplados del reproductor de video
 │       │   │   │   │   ├── PlayerGestureDetector.kt # Detección de gestos (brillo, volumen, avance 2X, doble toque ±5s)
-│       │   │   │   │   ├── PlayerHudIndicators.kt   # Indicadores visuales flotantes (HUD ±5s, 2X pill, slider brillo/vol)
+│       │   │   │   │   ├── PlayerHudIndicators.kt   # Indicadores visuales flotantes dinámicos con animaciones spring y auras neón (HUD ±5s, 2X pill pulsante, medidor brillo/volumen)
 │       │   │   │   │   ├── PlayerOrientationHandler.kt # Detección por sensor de hardware (OrientationEventListener)
 │       │   │   │   │   └── PlayerOverlayControls.kt # Barras superior e inferior y controles de reproducción centrales
 │       │   │   │   │
@@ -136,10 +150,13 @@ Este documento detalla la organización de carpetas, responsabilidades de cada m
 │       │   │   │       └── Type.kt                  # Tipografía M3
 │       │   │   │
 │       │   │   └── utils/            # Utilidades auxiliares
+│       │   │       ├── MessagingMediaScanner.kt # Indexación y escaneo de videos en carpetas de WhatsApp y Telegram
 │       │   │       ├── SubtitleUtils.kt # Detección de formato MIME (SRT/VTT) y resolución de nombres
 │       │   │       └── VideoUtils.kt    # Extracción y formateo seguro de metadatos y duración
 │       │   │
-│       │   └── res/                  # Recursos de la aplicación (strings, drawables)
+│       │   └── res/                  # Recursos de la aplicación (strings, drawables, audio raw)
+│       │       ├── raw/
+│       │       │   └── ui_click.ogg  # Muestra de sonido optimizada en Ogg Vorbis mono a 48 kHz para clics de UI
 │       │       └── values/
 │       │           └── strings.xml   # Textos traducibles y nombre de la app
 │       │
@@ -214,7 +231,7 @@ Este documento detalla la organización de carpetas, responsabilidades de cada m
 ## 🏛️ Decisiones de Diseño y Responsabilidades
 
 1. **Desacoplamiento Estricto:** La interfaz gráfica no interactúa directamente con los punteros de C++; se comunica exclusivamente mediante los singletons tipados `OboeAudioEngine` y `NativeVideoFilter` en Kotlin.
-2. **Procesador de Audio en Pipeline (`OboeAudioProcessor`):** Al insertarse como procesador de audio dentro de `DefaultAudioSink`, no se requiere re-instanciar el reproductor para alternar entre Oboe y AudioTrack.
+2. **Procesador de Audio Universal en Pipeline (`OboeAudioProcessor`):** Al insertarse como procesador de audio dentro de `DefaultAudioSink`, no se requiere re-instanciar el reproductor para alternar entre Oboe y AudioTrack. Además, ejecuta de forma integrada el pipeline DSP en tiempo real (Voces Claras con filtro peaking biquad, Compresor Dinámico Nocturno DRC y enrutamiento Mono/Haas 3D) directamente sobre las muestras PCM de Media3, garantizando que ambos motores de audio disfruten de las mismas capacidades acústicas avanzadas sin latencia perceptible.
 3. **Pipeline de Video Acelerado por GPU (OpenGL ES & C++):** El decodificador por hardware escribe directamente en un `SurfaceTexture` conectado a `GL_TEXTURE_EXTERNAL_OES`. El renderizado pasa por un pipeline nativo en C++ (`VideoColorEngine`) que aplica correcciones de color y convolución en el fragment shader sin provocar pausas ni consumir ciclos de CPU.
 4. **Preservación Acústica de Tono (Sonic Pitch Preservation):** El control de velocidad (hasta 2.0x) implementa el algoritmo Sonic integrado en Media3, permitiendo acelerar o ralentizar la reproducción conservando la afinación y timbre de voces e instrumentos.
 5. **Soporte Arquitectural Universal:** La compilación de C++ y Rust está parametrizada para generar binarios tanto en 32 bits (`armeabi-v7a`, `x86`) como en 64 bits (`arm64-v8a`, `x86_64`), permitiendo que el mismo código fuente ejecute en cualquier dispositivo.

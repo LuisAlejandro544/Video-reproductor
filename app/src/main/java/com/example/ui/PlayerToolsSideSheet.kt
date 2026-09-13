@@ -36,6 +36,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.Headphones
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Subtitles
 import androidx.compose.material.icons.filled.Tune
@@ -74,6 +75,7 @@ enum class PlayerToolItem {
     VOICE_NIGHT_AUDIO,
     STEREO_MONO,
     AUDIO_ENGINE,
+    GRAPHICS_ENGINE,
     SUBTITLES,
     ASPECT_RATIO
 }
@@ -270,16 +272,14 @@ fun PlayerToolsSideSheet(
                         )
 
                         // 8. Compresor Dinámico / Modo Voces Claras (Night Mode Audio)
-                        // Funcionalidad dependiente del motor C++ nativo de Google Oboe.
-                        // Si se utiliza Media3, se bloquea visualmente con un candado.
-                        val isVoiceNightLocked = (currentAudioEngine == AudioEngineType.MEDIA3)
+                        // Funcionalidad universal habilitada tanto para Google Oboe C++ como para Media3.
                         ToolMenuItem(
                             icon = Icons.Default.GraphicEq,
                             label = "Audio DSP Inteligente",
-                            description = if (isVoiceNightLocked) "Bloqueado • Requiere Google Oboe C++" else "Voces claras y compresor nocturno",
+                            description = "Voces claras y compresor nocturno (${if (currentAudioEngine == AudioEngineType.OBOE) "Oboe C++" else "Media3"})",
                             testTag = "tool_item_voice_night_audio",
-                            isLocked = isVoiceNightLocked,
-                            lockBadge = if (isVoiceNightLocked) "Bloqueado con Media3" else null,
+                            isLocked = false,
+                            lockBadge = null,
                             onClick = {
                                 onDismiss()
                                 onSelectTool(PlayerToolItem.VOICE_NIGHT_AUDIO)
@@ -307,6 +307,18 @@ fun PlayerToolsSideSheet(
                             onClick = {
                                 onDismiss()
                                 onSelectTool(PlayerToolItem.AUDIO_ENGINE)
+                            }
+                        )
+
+                        // 10. Motor Gráfico de Video (OpenGL ES / Vulkan 1.1+)
+                        ToolMenuItem(
+                            icon = Icons.Default.Memory,
+                            label = "Motor gráfico",
+                            description = "Vulkan 1.1+ / OpenGL ES 3.0+",
+                            testTag = "tool_item_graphics_engine",
+                            onClick = {
+                                onDismiss()
+                                onSelectTool(PlayerToolItem.GRAPHICS_ENGINE)
                             }
                         )
 

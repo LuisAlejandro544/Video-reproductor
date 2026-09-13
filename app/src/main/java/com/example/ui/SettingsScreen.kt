@@ -59,6 +59,8 @@ fun SettingsScreen(
     useDynamicColor: Boolean,
     onThemeModeChanged: (AppThemeMode) -> Unit,
     onDynamicColorChanged: (Boolean) -> Unit,
+    isSoundEffectsEnabled: Boolean = true,
+    onSoundEffectsToggled: (Boolean) -> Unit = {},
     onNavigateBack: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -136,6 +138,8 @@ fun SettingsScreen(
                     useDynamicColor = useDynamicColor,
                     onThemeModeSelected = onThemeModeChanged,
                     onDynamicColorToggled = onDynamicColorChanged,
+                    isSoundEffectsEnabled = isSoundEffectsEnabled,
+                    onSoundEffectsToggled = onSoundEffectsToggled,
                     onBack = { activeSubScreen = SettingsSubScreen.HUB }
                 )
             }

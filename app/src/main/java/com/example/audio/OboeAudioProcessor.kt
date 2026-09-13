@@ -7,6 +7,8 @@ import androidx.media3.common.audio.BaseAudioProcessor
 import androidx.media3.common.util.UnstableApi
 import java.nio.ByteBuffer
 import java.util.Arrays
+import kotlin.math.abs
+import kotlin.math.max
 
 /**
  * OboeAudioProcessor - Procesador de Audio Media3/ExoPlayer con salida hacia Google Oboe C++
@@ -55,6 +57,10 @@ class OboeAudioProcessor : BaseAudioProcessor() {
     private val haasDelaySamples = 768
     private val media3HaasBuffer = ShortArray(haasDelaySamples)
     private var media3HaasIndex = 0
+
+    // Filtros de estado DSP para el pipeline Media3 (Voces Claras y Compresor DRC Nocturno)
+    private var media3VoicePrevLowPass = 0.0f
+    private var media3Envelope = 0.0f
 
     override fun onConfigure(inputAudioFormat: AudioProcessor.AudioFormat): AudioProcessor.AudioFormat {
         // Solo procesamos tramas PCM de 16 bits estándar
@@ -142,40 +148,86 @@ class OboeAudioProcessor : BaseAudioProcessor() {
             outputBuffer.put(silenceByteArray, 0, pcmLength)
             outputBuffer.flip()
         } else {
-            // Modo Media3: aplicar DSP de canales en caso de estar activo
+            // Modo Media3: procesar DSP en tiempo real (Canales, Voces Claras y Compresor Nocturno)
+            val isVoiceClarity = OboeAudioEngine.isVoiceClarityEnabled()
+            val voiceGain = OboeAudioEngine.voiceClarityGain
+            val isCompressor = OboeAudioEngine.isDynamicCompressorEnabled()
+            val compIntensity = OboeAudioEngine.compressorIntensity
+            val hasDsp = isVoiceClarity || isCompressor || channelMode != AudioChannelMode.STEREO
+
             val outputBuffer = replaceOutputBuffer(pcmLength)
-            if (channelMode == AudioChannelMode.MONO) {
+
+            if (!hasDsp) {
+                // Ruta directa de máxima eficiencia sin cómputo adicional
+                outputBuffer.put(pcmData, 0, pcmLength)
+            } else {
                 val sampleCount = pcmLength / 4
                 for (s in 0 until sampleCount) {
-                    val sL = (pcmData[s * 4].toInt() and 0xFF or (pcmData[s * 4 + 1].toInt() shl 8)).toShort()
-                    val sR = (pcmData[s * 4 + 2].toInt() and 0xFF or (pcmData[s * 4 + 3].toInt() shl 8)).toShort()
-                    val mono = ((sL.toInt() + sR.toInt()) / 2).coerceIn(-32768, 32767).toShort()
-                    outputBuffer.put((mono.toInt() and 0xFF).toByte())
-                    outputBuffer.put(((mono.toInt() shr 8) and 0xFF).toByte())
-                    outputBuffer.put((mono.toInt() and 0xFF).toByte())
-                    outputBuffer.put(((mono.toInt() shr 8) and 0xFF).toByte())
-                }
-            } else if (channelMode == AudioChannelMode.SPATIAL_HAAS) {
-                val sampleCount = pcmLength / 4
-                for (s in 0 until sampleCount) {
-                    val sL = (pcmData[s * 4].toInt() and 0xFF or (pcmData[s * 4 + 1].toInt() shl 8)).toShort()
-                    val sR = (pcmData[s * 4 + 2].toInt() and 0xFF or (pcmData[s * 4 + 3].toInt() shl 8)).toShort()
-                    val mono = ((sL.toInt() + sR.toInt()) / 2).toShort()
+                    val sL = (pcmData[s * 4].toInt() and 0xFF or (pcmData[s * 4 + 1].toInt() shl 8)).toShort().toFloat()
+                    val sR = (pcmData[s * 4 + 2].toInt() and 0xFF or (pcmData[s * 4 + 3].toInt() shl 8)).toShort().toFloat()
 
-                    val delayed = media3HaasBuffer[media3HaasIndex]
-                    media3HaasBuffer[media3HaasIndex] = mono
-                    media3HaasIndex = (media3HaasIndex + 1) % haasDelaySamples
+                    var sampleL = sL
+                    var sampleR = sR
 
-                    val outL = (mono.toInt() * 1.05f).toInt().coerceIn(-32768, 32767).toShort()
-                    val outR = (delayed.toInt() * 0.90f + mono.toInt() * 0.15f).toInt().coerceIn(-32768, 32767).toShort()
+                    // 1. Enrutamiento de canales (Mono / Pseudo-Estéreo Haas 3D)
+                    if (channelMode == AudioChannelMode.MONO) {
+                        val mono = (sampleL + sampleR) * 0.5f
+                        sampleL = mono
+                        sampleR = mono
+                    } else if (channelMode == AudioChannelMode.SPATIAL_HAAS) {
+                        val mono = (sampleL + sampleR) * 0.5f
+                        val delayed = media3HaasBuffer[media3HaasIndex].toFloat()
+                        media3HaasBuffer[media3HaasIndex] = mono.toInt().coerceIn(-32768, 32767).toShort()
+                        media3HaasIndex = (media3HaasIndex + 1) % haasDelaySamples
+
+                        sampleL = mono * 1.05f
+                        sampleR = delayed * 0.90f + mono * 0.15f
+                    }
+
+                    // 2. Realce de Diálogos / Voces Claras (Peaking en banda vocal 1.5 kHz - 3.5 kHz)
+                    if (isVoiceClarity && voiceGain > 0.01f) {
+                        val avgSample = (sampleL + sampleR) * 0.5f
+                        val lowPass = 0.72f * media3VoicePrevLowPass + 0.28f * avgSample
+                        media3VoicePrevLowPass = lowPass
+                        val voiceBand = avgSample - lowPass
+                        val boost = voiceBand * (voiceGain * 1.35f)
+                        sampleL += boost
+                        sampleR += boost
+                    }
+
+                    // 3. Compresor Dinámico / Modo Nocturno (DRC - atenúa picos/explosiones, eleva susurros)
+                    if (isCompressor && compIntensity > 0.01f) {
+                        val maxSample = max(abs(sampleL), abs(sampleR))
+                        if (maxSample > media3Envelope) {
+                            media3Envelope = 0.08f * maxSample + 0.92f * media3Envelope
+                        } else {
+                            media3Envelope = 0.002f * maxSample + 0.998f * media3Envelope
+                        }
+
+                        val threshold = 9500.0f * (1.0f - compIntensity * 0.35f)
+                        if (media3Envelope > threshold) {
+                            val excess = media3Envelope - threshold
+                            val ratio = 3.5f + compIntensity * 4.5f
+                            val compressedEnvelope = threshold + (excess / ratio)
+                            val gainReduction = compressedEnvelope / max(1.0f, media3Envelope)
+                            sampleL *= gainReduction
+                            sampleR *= gainReduction
+                        } else if (media3Envelope > 80.0f && media3Envelope < threshold * 0.45f) {
+                            val quietBoost = 1.0f + (compIntensity * 0.65f) * (1.0f - (media3Envelope / (threshold * 0.45f)))
+                            sampleL *= quietBoost
+                            sampleR *= quietBoost
+                        }
+                    }
+
+                    // 4. Clamping con protección contra clipping digital a 16 bits
+                    val outL = sampleL.coerceIn(-32767.0f, 32767.0f).toInt().toShort()
+                    val outR = sampleR.coerceIn(-32767.0f, 32767.0f).toInt().toShort()
 
                     outputBuffer.put((outL.toInt() and 0xFF).toByte())
                     outputBuffer.put(((outL.toInt() shr 8) and 0xFF).toByte())
                     outputBuffer.put((outR.toInt() and 0xFF).toByte())
                     outputBuffer.put(((outR.toInt() shr 8) and 0xFF).toByte())
                 }
-            } else {
-                outputBuffer.put(pcmData, 0, pcmLength)
             }
             outputBuffer.flip()
         }
@@ -183,6 +235,11 @@ class OboeAudioProcessor : BaseAudioProcessor() {
 
     override fun onFlush() {
         try {
+            media3VoicePrevLowPass = 0.0f
+            media3Envelope = 0.0f
+            media3HaasIndex = 0
+            Arrays.fill(media3HaasBuffer, 0.toShort())
+
             if (currentEngine == AudioEngineType.OBOE) {
                 // Al adelantar/retroceder o reiniciar, vaciar el búfer inmediatamente sin detener el hardware
                 OboeAudioEngine.flush()
@@ -194,6 +251,11 @@ class OboeAudioProcessor : BaseAudioProcessor() {
 
     override fun onReset() {
         try {
+            media3VoicePrevLowPass = 0.0f
+            media3Envelope = 0.0f
+            media3HaasIndex = 0
+            Arrays.fill(media3HaasBuffer, 0.toShort())
+
             if (currentEngine == AudioEngineType.OBOE) {
                 OboeAudioEngine.flush()
             }
