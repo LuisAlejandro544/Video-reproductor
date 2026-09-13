@@ -30,6 +30,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AspectRatio
 import androidx.compose.material.icons.filled.Audiotrack
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.AutoFixHigh
 import androidx.compose.material.icons.filled.BlurOn
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.GraphicEq
@@ -67,6 +68,7 @@ enum class PlayerToolItem {
     SUN_MODE,
     PILLARBOX_BLUR,
     FSR_SUPER_RESOLUTION,
+    ANIME4K,
     VOICE_NIGHT_AUDIO,
     STEREO_MONO,
     AUDIO_ENGINE,
@@ -251,7 +253,19 @@ fun PlayerToolsSideSheet(
                             }
                         )
 
-                        // 7. Compresor Dinámico / Modo Voces Claras (Night Mode Audio)
+                        // 7. Anime4K (Realce y perfilado de trazos para animación)
+                        ToolMenuItem(
+                            icon = Icons.Default.AutoFixHigh,
+                            label = "Anime4K (Animación)",
+                            description = "Reconstrucción y realce de trazos en anime",
+                            testTag = "tool_item_anime4k",
+                            onClick = {
+                                onDismiss()
+                                onSelectTool(PlayerToolItem.ANIME4K)
+                            }
+                        )
+
+                        // 8. Compresor Dinámico / Modo Voces Claras (Night Mode Audio)
                         ToolMenuItem(
                             icon = Icons.Default.GraphicEq,
                             label = "Audio DSP Inteligente",

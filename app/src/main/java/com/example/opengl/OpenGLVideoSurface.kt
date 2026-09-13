@@ -198,14 +198,17 @@ class OpenGLVideoRenderer(
                     blurRadius = 14.0f,
                     backgroundDim = 0.45f,
                     fsrEnabled = 0.0f,
-                    fsrSharpness = 0.0f
+                    fsrSharpness = 0.0f,
+                    sunMode = 0.0f,
+                    anime4kMode = 0.0f,
+                    anime4kStrength = 0.0f
                 )
             }
 
             // PASO 2: Calcular matriz de transformación para modo de aspecto (FIT, ZOOM, FILL)
             calculateMvpMatrix()
 
-            // Delegar el renderizado frontal al shader C++ (con AMD FSR 1.0 si está activado)
+            // Delegar el renderizado frontal al shader C++ (con Anime4K o AMD FSR 1.0 si están activados)
             NativeVideoFilter.nativeRender(
                 textureId = textureId,
                 stMatrix = stMatrix,
@@ -222,7 +225,9 @@ class OpenGLVideoRenderer(
                 backgroundDim = 0.0f,
                 fsrEnabled = if (currentEq.fsrEnabled) 1.0f else 0.0f,
                 fsrSharpness = currentEq.fsrSharpness,
-                sunMode = currentEq.sunMode
+                sunMode = currentEq.sunMode,
+                anime4kMode = currentEq.anime4kMode.id.toFloat(),
+                anime4kStrength = currentEq.anime4kStrength
             )
         } catch (e: Throwable) {
             Log.w(TAG, "Excepción transitoria en onDrawFrame: ${e.message}")

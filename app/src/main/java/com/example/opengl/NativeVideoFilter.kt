@@ -67,7 +67,9 @@ object NativeVideoFilter {
         backgroundDim: Float = 0.0f,
         fsrEnabled: Float = 0.0f,
         fsrSharpness: Float = 0.0f,
-        sunMode: Float = 0.0f
+        sunMode: Float = 0.0f,
+        anime4kMode: Float = 0.0f,
+        anime4kStrength: Float = 0.75f
     ): Boolean {
         if (!isLibraryLoaded) return false
         return try {
@@ -87,7 +89,9 @@ object NativeVideoFilter {
                 backgroundDim,
                 fsrEnabled,
                 fsrSharpness,
-                sunMode
+                sunMode,
+                anime4kMode,
+                anime4kStrength
             )
         } catch (e: Throwable) {
             Log.e(TAG, "Error invocando internalNativeRender: ${e.message}")
@@ -127,7 +131,9 @@ object NativeVideoFilter {
         backgroundDim: Float,
         fsrEnabled: Float,
         fsrSharpness: Float,
-        sunMode: Float
+        sunMode: Float,
+        anime4kMode: Float,
+        anime4kStrength: Float
     ): Boolean
 
     @JvmStatic

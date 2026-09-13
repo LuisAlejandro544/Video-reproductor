@@ -230,3 +230,34 @@ Este archivo proporciona el contexto técnico, arquitectónico y operativo neces
   1. **Salida por Cable HDMI / DisplayPort (USB Type-C con DisplayManager / Presentation):** El teléfono renderiza la superficie EGL y emite el audio Oboe directamente sobre el `Display` secundario conectado, logrando paridad 100% exacta sin compresión.
   2. **Duplicación Inalámbrica (Miracast / Wi-Fi Direct Display):** El codificador por hardware del sistema captura el framebuffer compuesto de la GPU y el flujo de audio mezclado de Android, preservando los efectos de shader y compresión.
   3. **Streaming Universal Autónomo (Sin Google Cast dependiente de GMS):** Generación de un servidor local HTTP/RTSP en el dispositivo para que cualquier Smart TV (LG webOS, Samsung Tizen, Android TV, Fire TV, Roku) reproduzca el contenido manteniendo total independencia de Google Play Services.
+
+### 18. Anime4K: Reconstrucción y Realce de Trazos para Animación en GPU (GLSL C++)
+- **Fundamento y Algoritmo:** Adaptación móvil de los algoritmos de Anime4K (bloc97) integrados en el Fragment Shader nativo de `VideoColorEngine.cpp`:
+  - **Detección de Bordes Sobel:** Ponderación con luminancia Rec. 709 para aislar con precisión matemática los contornos en estilos de animación tradicional y cel-shading.
+  - **Modo Lite (Reconstrucción Adaptativa Bilateral):** Filtro bilateral direccional de alta velocidad con pesos ponderados por distancia euclidiana de color. Ideal para dispositivos móviles de gama de entrada o sesiones prolongadas con batería.
+  - **Modo Pro (Line Darken & Line Thinning):** Realce direccional de trazos oscuros y adelgazamiento de líneas borrosas producidas por escalado bilineal convencional, restaurando el contraste nítido característico del dibujo animado original.
+  - **Modo Restauración / Denoise:** Filtro de suavizado de planos 8-conectado con preservación de contornos para suprimir grano y artefactos de compresión en fondos lisos típicos de series clásicas.
+- **Pipeline Zero-Copy en GPU:** Se ejecuta directamente sobre la textura `GL_TEXTURE_EXTERNAL_OES` en el espacio de coordenadas nativo sin pasos adicionales en memoria RAM ni conversiones CPU-GPU.
+- **Arquitectura de Interfaz y Estado:**
+  - `Anime4kMode` en `VideoEqualizerState`: enum con `OFF (0)`, `LITE (1)`, `PRO (2)`, `RESTORE (3)`.
+  - `Anime4kStrength`: regulador de intensidad del 10% al 100%.
+  - `Anime4KSheet.kt`: pantalla modal dedicada e independiente accesible desde `PlayerToolsSideSheet` (`PlayerToolItem.ANIME4K`).
+  - Preset instantáneo `"Anime 4K (Pro)"` añadido a la biblioteca de presets rápidos del ecualizador.
+
+### 19. Persistencia de Preferencias de Audio (`AppPreferences`) y Media3 por Defecto
+- **Almacenamiento Local de Preferencias:** Implementado en `AppPreferences.kt` usando `SharedPreferences` privado (`nova_player_preferences`).
+- **Motor Predeterminado (Media3):** Por defecto, la aplicación inicia con `AudioEngineType.MEDIA3` garantizando sincronización A/V inmediata, estabilidad en auriculares Bluetooth y compatibilidad universal.
+- **Persistencia Reactiva:** `MainViewModel` expone `selectedAudioEngine: StateFlow<AudioEngineType>` inicializado desde `AppPreferences`. Cualquier cambio seleccionado por el usuario en `SettingsScreen` o `AudioEngineSheet` se persiste en disco y se propaga atómicamente a `MainActivity` y `OboeAudioProcessor`, manteniéndose intacto tras cerrar y reabrir la app.
+
+### 20. Sistema de Gestos Táctiles: Salto Rápido por Doble Toque (+5s / -5s)
+- **Discriminación Inteligente en `pointerInput` (`awaitEachGesture`):**
+  - **Doble Toque en Lateral Izquierdo (`x < width / 2`):** Retrocede el video 5 segundos (-5s) limitando a un mínimo de 0 ms.
+  - **Doble Toque en Lateral Derecho (`x >= width / 2`):** Adelanta el video 5 segundos (+5s) limitando a la duración máxima del video.
+  - **Ventana Temporal Calibrada:** La detección requiere dos toques en el mismo lateral con un intervalo inferior a 350 ms.
+  - **Desacoplamiento del Toque Simple:** Si no ocurre un segundo toque en 280 ms, se ejecuta la alternancia de visibilidad de los controles de pantalla (`showControls = !showControls`). Si se detecta el doble toque, el job del toque simple se cancela de inmediato, evitando parpadeos en los controles.
+  - **Retroalimentación Háptica y Visual (HUD):** Emite `HapticFeedbackConstants.KEYBOARD_TAP` y proyecta una cápsula circular animada con icono (`FastRewind` / `FastForward`) y etiqueta numérica (`-5 seg` / `+5 seg`) que se desvanece suavemente a los 700 ms.
+
+### 21. Confirmación de Seguridad Antes de Eliminar Videos de la Biblioteca
+- **Prevención de Pérdida Accidental:** En `VideoImportScreen.kt`, al tocar el botón de eliminar de una tarjeta del historial, se activa el estado `videoPendingDelete`.
+- **Diálogo Modal Informativo (`AlertDialog`):** Muestra el nombre exacto del archivo, una advertencia explícita aclarando que el archivo original no se borrará del almacenamiento del teléfono, botón destructivo "Eliminar" y botón "Cancelar".
+

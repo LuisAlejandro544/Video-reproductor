@@ -281,7 +281,9 @@ Java_com_example_opengl_NativeVideoFilter_internalNativeRender(
     jfloat backgroundDim,
     jfloat fsrEnabled,
     jfloat fsrSharpness,
-    jfloat sunMode
+    jfloat sunMode,
+    jfloat anime4kMode,
+    jfloat anime4kStrength
 ) {
     auto engine = getVideoColorEngine();
     if (!engine || !stMatrix || !mvpMatrix) {
@@ -309,7 +311,9 @@ Java_com_example_opengl_NativeVideoFilter_internalNativeRender(
             backgroundDim,
             fsrEnabled,
             fsrSharpness,
-            sunMode
+            sunMode,
+            anime4kMode,
+            anime4kStrength
         );
     }
 
@@ -338,13 +342,16 @@ Java_com_example_opengl_NativeVideoFilter_nativeRender(
     jfloat backgroundDim,
     jfloat fsrEnabled,
     jfloat fsrSharpness,
-    jfloat sunMode
+    jfloat sunMode,
+    jfloat anime4kMode,
+    jfloat anime4kStrength
 ) {
     return Java_com_example_opengl_NativeVideoFilter_internalNativeRender(
         env, nullptr, textureId, stMatrix, mvpMatrix, brightness, contrast,
         saturation, gamma, sharpness, texWidth, texHeight,
         blueLightFilter, blurRadius, backgroundDim,
-        fsrEnabled, fsrSharpness, sunMode
+        fsrEnabled, fsrSharpness, sunMode,
+        anime4kMode, anime4kStrength
     );
 }
 

@@ -46,6 +46,7 @@ import androidx.compose.material.icons.filled.Widgets
 import androidx.compose.material.icons.filled.BrightnessLow
 import androidx.compose.material.icons.filled.BrightnessMedium
 import androidx.compose.material.icons.filled.FastForward
+import androidx.compose.material.icons.filled.FastRewind
 import androidx.compose.material.icons.filled.Forward10
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
@@ -161,7 +162,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun VideoPlayerScreen(
     videoItem: VideoItem,
-    currentAudioEngine: AudioEngineType = AudioEngineType.OBOE,
+    currentAudioEngine: AudioEngineType = AudioEngineType.MEDIA3,
     initialPositionMs: Long = 0L,
     onPositionChanged: (Long) -> Unit = {},
     onPlaybackProgress: ((positionMs: Long, durationMs: Long) -> Unit)? = null,
@@ -231,6 +232,7 @@ fun VideoPlayerScreen(
     // Pantallas exclusivas e independientes para cada herramienta
     var showPillarboxSheet by remember { mutableStateOf(false) }
     var showFsrSheet by remember { mutableStateOf(false) }
+    var showAnime4kSheet by remember { mutableStateOf(false) }
     var showSunModeSheet by remember { mutableStateOf(false) }
     var showVoiceNightSheet by remember { mutableStateOf(false) }
     var showAspectRatioSheet by remember { mutableStateOf(false) }
@@ -294,6 +296,13 @@ fun VideoPlayerScreen(
 
     // Estado del modo de avance rápido a 2X (activado al mantener presionado el lateral derecho)
     var isFastForwarding2x by remember { mutableStateOf(false) }
+
+    // Control de doble toque (doble click) para adelantar o retroceder 5 segundos (+5s / -5s)
+    var lastTapTimeMs by remember { mutableLongStateOf(0L) }
+    var lastTapIsLeft by remember { mutableStateOf(false) }
+    var singleTapJob by remember { mutableStateOf<Job?>(null) }
+    var doubleTapSeekSide by remember { mutableStateOf<DoubleTapSeekSide?>(null) }
+    var doubleTapHideJob by remember { mutableStateOf<Job?>(null) }
 
     // Estado del Sistema de Subtítulos (SRT / WebVTT y pistas embebidas)
     var showSubtitlesSheet by remember { mutableStateOf(false) }
@@ -739,9 +748,55 @@ fun VideoPlayerScreen(
                                                 exoPlayer.pause()
                                             }
                                         } else if (!hasDragged) {
-                                            // Toque simple: alternar visibilidad de los controles
-                                            showControls = !showControls
-                                            lastInteractionTime = System.currentTimeMillis()
+                                            val now = System.currentTimeMillis()
+                                            val isDoubleTap = (now - lastTapTimeMs < 350L) && (lastTapIsLeft == isLeft)
+
+                                            if (isDoubleTap) {
+                                                // Doble toque detectado en el mismo lado: cancelar el toggle de controles y realizar salto de 5 segundos
+                                                singleTapJob?.cancel()
+                                                singleTapJob = null
+                                                lastTapTimeMs = 0L
+
+                                                val deltaMs = 5000L
+                                                if (isLeft) {
+                                                    // Doble toque a la izquierda: retroceder 5 segundos
+                                                    val newPos = (exoPlayer.currentPosition - deltaMs).coerceAtLeast(0L)
+                                                    exoPlayer.seekTo(newPos)
+                                                    currentPositionMs = newPos
+                                                    onPositionChanged(newPos)
+                                                    doubleTapSeekSide = DoubleTapSeekSide.LEFT
+                                                } else {
+                                                    // Doble toque a la derecha: adelantar 5 segundos
+                                                    val maxPos = if (totalDurationMs > 0) totalDurationMs else exoPlayer.duration
+                                                    val newPos = (exoPlayer.currentPosition + deltaMs).coerceAtMost(maxPos)
+                                                    exoPlayer.seekTo(newPos)
+                                                    currentPositionMs = newPos
+                                                    onPositionChanged(newPos)
+                                                    doubleTapSeekSide = DoubleTapSeekSide.RIGHT
+                                                }
+
+                                                try {
+                                                    view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
+                                                } catch (_: Throwable) {}
+
+                                                doubleTapHideJob?.cancel()
+                                                doubleTapHideJob = coroutineScope.launch {
+                                                    delay(700)
+                                                    doubleTapSeekSide = null
+                                                }
+                                            } else {
+                                                // Primer toque: registrar tiempo y lado, programar verificación de toque simple
+                                                lastTapTimeMs = now
+                                                lastTapIsLeft = isLeft
+
+                                                singleTapJob?.cancel()
+                                                singleTapJob = coroutineScope.launch {
+                                                    delay(280)
+                                                    showControls = !showControls
+                                                    lastInteractionTime = System.currentTimeMillis()
+                                                    lastTapTimeMs = 0L
+                                                }
+                                            }
                                         } else {
                                             // Fin del deslizamiento: desvanecer suavemente el HUD minimalista
                                             gestureHideJob?.cancel()
@@ -939,6 +994,57 @@ fun VideoPlayerScreen(
             }
         }
 
+        // Indicador HUD animado para retroalimentación de Doble Tap (+5s / -5s)
+        AnimatedVisibility(
+            visible = doubleTapSeekSide != null,
+            enter = fadeIn(tween(100)) + scaleIn(tween(100), initialScale = 0.82f),
+            exit = fadeOut(tween(250)),
+            modifier = Modifier
+                .align(
+                    if (doubleTapSeekSide == DoubleTapSeekSide.LEFT) {
+                        Alignment.CenterStart
+                    } else {
+                        Alignment.CenterEnd
+                    }
+                )
+                .padding(horizontal = 48.dp)
+                .testTag(if (doubleTapSeekSide == DoubleTapSeekSide.LEFT) "double_tap_rewind_indicator" else "double_tap_forward_indicator")
+        ) {
+            Surface(
+                shape = CircleShape,
+                color = Color(0xFF0F172A).copy(alpha = 0.90f),
+                border = BorderStroke(1.dp, Color(0xFF38BDF8).copy(alpha = 0.65f)),
+                shadowElevation = 12.dp,
+                modifier = Modifier.size(76.dp)
+            ) {
+                Column(
+                    modifier = Modifier.fillMaxSize(),
+                    verticalArrangement = Arrangement.Center,
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Icon(
+                        imageVector = if (doubleTapSeekSide == DoubleTapSeekSide.LEFT) {
+                            Icons.Default.FastRewind
+                        } else {
+                            Icons.Default.FastForward
+                        },
+                        contentDescription = if (doubleTapSeekSide == DoubleTapSeekSide.LEFT) "Retroceder 5 segundos" else "Adelantar 5 segundos",
+                        tint = Color(0xFF38BDF8),
+                        modifier = Modifier.size(26.dp)
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = if (doubleTapSeekSide == DoubleTapSeekSide.LEFT) "-5 seg" else "+5 seg",
+                        style = MaterialTheme.typography.labelMedium.copy(
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White,
+                            fontSize = 11.sp
+                        )
+                    )
+                }
+            }
+        }
+
         // Interfaz superpuesta (Controles, Título, Tiempo)
         AnimatedVisibility(
             visible = showControls && !isControlsLocked,
@@ -1098,6 +1204,7 @@ fun VideoPlayerScreen(
                     PlayerToolItem.SUN_MODE -> showSunModeSheet = true
                     PlayerToolItem.PILLARBOX_BLUR -> showPillarboxSheet = true
                     PlayerToolItem.FSR_SUPER_RESOLUTION -> showFsrSheet = true
+                    PlayerToolItem.ANIME4K -> showAnime4kSheet = true
                     PlayerToolItem.VOICE_NIGHT_AUDIO -> showVoiceNightSheet = true
                     PlayerToolItem.STEREO_MONO -> showStereoMonoSheet = true
                     PlayerToolItem.SUBTITLES -> showSubtitlesSheet = true
@@ -1153,6 +1260,15 @@ fun VideoPlayerScreen(
                 state = equalizerState,
                 onStateChange = { equalizerState = it },
                 onDismiss = { showFsrSheet = false }
+            )
+        }
+
+        // Pantalla exclusiva e independiente de Anime4K (bloc97 - Animación)
+        if (showAnime4kSheet) {
+            Anime4KSheet(
+                state = equalizerState,
+                onStateChange = { equalizerState = it },
+                onDismiss = { showAnime4kSheet = false }
             )
         }
 
@@ -2012,6 +2128,14 @@ private fun BottomControlsBar(
             }
         }
     }
+}
+
+/**
+ * Lado del doble toque (doble clic) para salto rápido de 5 segundos.
+ */
+private enum class DoubleTapSeekSide {
+    LEFT,
+    RIGHT
 }
 
 /**

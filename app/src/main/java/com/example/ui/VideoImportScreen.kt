@@ -38,6 +38,8 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
@@ -97,6 +99,99 @@ fun VideoImportScreen(
     modifier: Modifier = Modifier
 ) {
     var showClearConfirmDialog by remember { mutableStateOf(false) }
+    var videoPendingDelete by remember { mutableStateOf<VideoEntity?>(null) }
+
+    // Diálogo modal de confirmación antes de eliminar un video individual de la biblioteca
+    videoPendingDelete?.let { video ->
+        AlertDialog(
+            onDismissRequest = { videoPendingDelete = null },
+            icon = {
+                Surface(
+                    shape = CircleShape,
+                    color = MaterialTheme.colorScheme.error.copy(alpha = 0.18f),
+                    modifier = Modifier.size(48.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = Icons.Default.DeleteOutline,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+                }
+            },
+            title = {
+                Text(
+                    text = "¿Eliminar video?",
+                    style = MaterialTheme.typography.titleLarge.copy(
+                        fontWeight = FontWeight.Bold
+                    ),
+                    color = Color.White
+                )
+            },
+            text = {
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = "¿Deseas eliminar este video del registro de la biblioteca?",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Color.White.copy(alpha = 0.85f)
+                    )
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = Color.White.copy(alpha = 0.07f),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = video.name,
+                            style = MaterialTheme.typography.bodySmall.copy(
+                                fontWeight = FontWeight.SemiBold
+                            ),
+                            color = Color(0xFF38BDF8),
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.padding(10.dp)
+                        )
+                    }
+                    Text(
+                        text = "El archivo original no se borrará del almacenamiento de tu teléfono.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color.White.copy(alpha = 0.55f)
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val idToDelete = video.id
+                        videoPendingDelete = null
+                        onDeleteVideo(idToDelete)
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.error
+                    ),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.testTag("confirm_delete_video_button")
+                ) {
+                    Text("Eliminar", color = Color.White, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { videoPendingDelete = null },
+                    modifier = Modifier.testTag("cancel_delete_video_button")
+                ) {
+                    Text("Cancelar", color = Color.White.copy(alpha = 0.7f))
+                }
+            },
+            containerColor = Color(0xFF1B2230),
+            tonalElevation = 8.dp,
+            modifier = Modifier.testTag("delete_video_confirmation_dialog")
+        )
+    }
 
     // Diálogo de confirmación para vaciar el historial
     if (showClearConfirmDialog) {
@@ -264,7 +359,7 @@ fun VideoImportScreen(
                 VideoHistoryCard(
                     video = video,
                     onPlay = { onPlayVideo(video) },
-                    onDelete = { onDeleteVideo(video.id) }
+                    onDelete = { videoPendingDelete = video }
                 )
             }
         }

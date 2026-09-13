@@ -12,7 +12,15 @@ package com.example.opengl
  * - Filtro Luz Azul (Blue Light Filter): Atenuación selectiva del espectro azul y calidez ámbar [0.0f a 1.0f].
  * - Desenfoque Pillarbox (Pillarbox Blur): Desenfoque dinámico de fondo para videos verticales con barras laterales.
  * - AMD FidelityFX Super Resolution (FSR 1.0): Reconstrucción espacial adaptativa (EASU) y afilado por contraste (RCAS).
+ * - Anime4K (bloc97): Reconstrucción bilateral y realce direccional de contornos para anime y animación cel.
  */
+enum class Anime4kMode(val id: Int, val title: String, val subtitle: String) {
+    OFF(0, "Desactivado", "Renderizado estándar sin filtros de animación"),
+    LITE(1, "Anime4K Lite", "Reconstrucción adaptativa y alta eficiencia energética"),
+    PRO(2, "Anime4K Pro", "Realce de trazos oscuros y perfilado de contornos"),
+    RESTORE(3, "Anime4K Restauración", "Limpieza de artefactos y grano en anime clásico")
+}
+
 data class VideoEqualizerState(
     val brightness: Float = 0.0f,
     val contrast: Float = 1.0f,
@@ -23,7 +31,9 @@ data class VideoEqualizerState(
     val pillarboxBlur: Boolean = true,
     val fsrEnabled: Boolean = false,
     val fsrSharpness: Float = 0.75f,
-    val sunMode: Float = 0.0f
+    val sunMode: Float = 0.0f,
+    val anime4kMode: Anime4kMode = Anime4kMode.OFF,
+    val anime4kStrength: Float = 0.75f
 ) {
     val isDefault: Boolean
         get() = brightness == 0.0f &&
@@ -35,13 +45,27 @@ data class VideoEqualizerState(
                 pillarboxBlur &&
                 !fsrEnabled &&
                 fsrSharpness == 0.75f &&
-                sunMode == 0.0f
+                sunMode == 0.0f &&
+                anime4kMode == Anime4kMode.OFF &&
+                anime4kStrength == 0.75f
 
     companion object {
         val DEFAULT = VideoEqualizerState()
 
         val PRESETS = mapOf(
             "Normal" to DEFAULT,
+            "Anime 4K (Pro)" to VideoEqualizerState(
+                brightness = 0.0f,
+                contrast = 1.08f,
+                saturation = 1.18f,
+                gamma = 1.0f,
+                sharpness = 0.0f,
+                blueLightFilter = 0.0f,
+                pillarboxBlur = true,
+                fsrEnabled = false,
+                anime4kMode = Anime4kMode.PRO,
+                anime4kStrength = 0.80f
+            ),
             "Super-Resolución FSR" to VideoEqualizerState(
                 brightness = 0.0f,
                 contrast = 1.06f,

@@ -80,7 +80,13 @@
     - **Corrección Gamma:** Curva exponencial de rango dinámico (0.5 a 2.0).
     - **Nitidez (Sharpening):** Realce de bordes acelerado mediante kernel de convolución Laplaciano 3x3.
     - **Filtro Luz Azul:** Factor continuo de calidez y descanso visual (0% a 100%).
-  - **Presets de Imagen Instantáneos:** Normal, Descanso Visual, Vívido, Cine, Nocturno, Alto Contraste y Blanco y Negro.
+  - **Reconstrucción y Realce Anime4K (bloc97 en GPU):**
+    - Algoritmo de restauración y perfilado de trazos especializado para series de animación, anime y dibujos animados en OpenGL ES:
+      - **Modo Lite (Bilateral Rápido):** Reconstrucción bilateral de alta velocidad orientada a dispositivos de entrada o ahorro de batería.
+      - **Modo Pro (Line Darken & Line Thinning):** Realce direccional de contornos, oscurecimiento de trazos y adelgazamiento de líneas borrosas producidas por escalado bilineal.
+      - **Modo Restauración (Denoise & Despeckle):** Suavizado adaptativo de planos preservando aristas para limpiar artefactos de compresión y grano en fondos lisos.
+    - Regulador de intensidad de realce (10% a 100%) y preset directo "Anime 4K (Pro)".
+  - **Presets de Imagen Instantáneos:** Normal, Anime 4K (Pro), Super-Resolución FSR, Descanso Visual, Vívido, Cine, Nocturno, Alto Contraste y Blanco y Negro.
   - Panel inferior moderno e interactivo (`VideoEqualizerSheet`) con botón de restablecimiento rápido.
 - **Control de Velocidad de Reproducción (Hasta 2.0x) con Corrección de Tono (Sonic):**
   - Selector de velocidad desde 0.25x hasta un máximo de **2.0x** tanto por presets rápidos como por ajuste fino continuo.
@@ -90,6 +96,7 @@
   - Panel lateral interactivo (`PlayerToolsSideSheet`) accesible con un toque desde las barras superior e inferior.
   - Cada herramienta cuenta con su propia pantalla o panel modal independiente y exclusivo para una experiencia enfocada y limpia:
     - **Ecualizador de Video (`VideoEqualizerSheet`):** Calibración de color (brillo, contraste, saturación, gamma), nitidez por convolución y presets de imagen.
+    - **Reconstrucción Anime4K (`Anime4KSheet`):** Pantalla dedicada para realce de animación con modos Lite, Pro y Restauración más ajuste de fuerza.
     - **Modo Sol Extremo (`SunModeSheet`):** Pantalla independiente de compensación para exteriores bajo luz solar directa y perfiles de alto contraste para accesibilidad.
     - **Relleno Desenfoque Vertical (`PillarboxBlurSheet`):** Pantalla exclusiva para configurar el desenfoque Gaussiano y atenuación de fondo cuando un video vertical se reproduce con bandas negras.
     - **Super-Resolución AMD FSR 1.0 (`FsrUpscaleSheet`):** Pantalla dedicada para activar el escalado espacial adaptativo (EASU) y regular la nitidez dependiente del contraste (RCAS).
@@ -99,24 +106,27 @@
     - **Velocidad de Reproducción (`PlaybackSpeedSheet`):** Panel dedicado de velocidad con *Sonic Pitch Preservation*.
     - **Gestor de Subtítulos (`SubtitlesBottomSheet`):** Configuración de subtítulos internos y externos con ajuste de escala tipográfica.
     - **Bloqueo de Controles (`Lock`):** Modo para inmovilizar gestos y toques accidentales con botón flotante animado de desbloqueo instantáneo.
-- **Doble Motor de Audio Seleccionable:**
-  - **Google Oboe (Nativo C++):** Motor de ultra baja latencia que interactúa directamente con **AAudio** en Android 8.0+ y realiza fallback automático a **OpenSL ES** en hardware heredado. Elimina microcortes y asegura sincronización estricta A/V.
-  - **Media3 (AudioTrack):** Canal estándar de audio del sistema Android para máxima compatibilidad.
-- **Importación Dual de Medios:**
-  - **Galería Multimedia (Android Photo Picker):** Selección visual rápida sin necesidad de permisos invasivos.
-  - **Gestor de Archivos Nativo (Storage Access Framework):** Exploración completa de directorios internos, descargas y tarjetas MicroSD.
-- **Controles Multimedia Profesionales (Estilo PC) y Gestos Táctiles Avanzados:**
-  - **Modo Inmersivo Automático (Sin Distracciones):**
-    - Al reproducir un video, la barra de estado del sistema (reloj, notificaciones, batería) y la barra de navegación desaparecen por completo de la pantalla mediante `WindowInsetsControllerCompat`.
-    - La experiencia visual aprovecha el 100% de la pantalla de borde a borde (Edge-to-Edge), eliminando elementos molestos mientras se disfruta del contenido.
+- **Doble Motor de Audio Seleccionable con Persistencia:**
+  - **Media3 (AudioTrack Estándar) [Predeterminado]:** Pipeline nativo estándar de Android con sincronización A/V automática, compensación de retardo para auriculares Bluetooth y compatibilidad universal con todos los dispositivos.
+  - **Google Oboe (Nativo C++):** Motor de ultra baja latencia que interactúa directamente con **AAudio** en Android 8.0+ y realiza fallback automático a **OpenSL ES** en hardware heredado. Elimina microcortes y asegura procesamiento directo a nivel de muestra.
+  - **Persistencia en Disco (`AppPreferences`):** La preferencia de motor de audio elegida se guarda automáticamente y se preserva de forma permanente entre reinicios de la aplicación.
+- **Gestos Táctiles Avanzados y Control Rápido:**
+  - **Salto Rápido por Doble Toque (Doble Click a los Laterales):**
+    - **Doble toque en el lado izquierdo:** Atrasa el video **5 segundos** (-5s).
+    - **Doble toque en el lado derecho:** Adelanta el video **5 segundos** (+5s).
+    - Incluye respuesta háptica precisa y un indicador visual flotante (HUD circular) con icono y etiqueta (+5 seg / -5 seg) que aparece instantáneamente y se desvanece de forma suave.
   - **Gesto de Avance Rápido a 2X (Pulsación Prolongada en Lateral Derecho):**
-    - Mantener presionado el lado derecho de la pantalla por aproximadamente 700 ms activa instantáneamente la reproducción rápida a **2X** con respuesta háptica y un badge flotante HUD estilizado.
-    - Al levantar el dedo, la reproducción vuelve de forma inmediata y suave a la velocidad configurada previamente por el usuario (sin desfasar audio ni controles).
-    - Cálculo calibrado para evitar toques accidentales y compatibilidad fluida con el control de volumen por deslizamiento vertical.
+    - Mantener presionado el lado derecho de la pantalla activa instantáneamente la reproducción rápida a **2X** con respuesta háptica y un badge flotante HUD estilizado.
+    - Al levantar el dedo, la reproducción vuelve de forma inmediata y suave a la velocidad configurada previamente.
   - **Gestos Táctiles con HUD Minimalista:**
     - **Lado Izquierdo (Deslizar vertical):** Control dinámico y directo del brillo de pantalla (1% a 100%).
     - **Lado Derecho (Deslizar vertical):** Control en tiempo real del volumen multimedia físico del dispositivo.
-    - **Indicador Flotante Minimalista:** Cápsula estilizada no invasiva con icono dinámico según el nivel, barra vertical graduada y porcentaje numérico que aparece exclusivamente durante el gesto y se oculta automáticamente.
+- **Biblioteca Interactiva de Videos Importados y Vistos (Persistencia Local con Room):**
+  - Registro automático y persistente en SQLite (`VideoEntity`, `VideoDao`) de cada video cargado desde la Galería o Gestor de Archivos.
+  - Extracción y muestra inmediata de metadatos: **título completo del archivo**, **tamaño** y **duración formateada** (ej. `04:32` o `01:20:15`).
+  - Barra de progreso visual interactiva indicando el porcentaje visto y la marca de tiempo de pausa (ej. *En pausa en 02:15* o *Visto completo*).
+  - Reproducción o reanudación instantánea con un solo toque directamente desde la posición guardada.
+  - **Confirmación de Seguridad al Eliminar:** Diálogo modal que solicita confirmación antes de eliminar cualquier video individual de la biblioteca, indicando claramente que los archivos originales permanecen a salvo en el almacenamiento del teléfono. Opción adicional de vaciado completo mediante confirmación.
   - Barra de progreso con *scrubbing* en tiempo real.
   - Salto temporal rápido (-10s / +10s).
   - Modos de relación de aspecto instantáneos: *Ajustar (Fit)*, *Zoom (Rellenar)* y *Estirar (Fill)*.

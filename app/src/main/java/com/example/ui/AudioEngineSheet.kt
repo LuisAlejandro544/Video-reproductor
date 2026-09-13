@@ -108,30 +108,30 @@ fun AudioEngineSheet(
                 verticalArrangement = Arrangement.spacedBy(10.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                // Google Oboe Nativo C++
-                AudioEngineOptionCard(
-                    title = "Google Oboe (Nativo C++)",
-                    badge = "Recomendado",
-                    description = "Motor de latencia ultrabaja basado en AAudio nativo. Diseñado para evitar retrasos acústicos y microcortes.",
-                    icon = Icons.Default.ElectricBolt,
-                    isSelected = currentEngine == AudioEngineType.OBOE,
-                    testTag = "audio_engine_oboe",
-                    onClick = {
-                        onEngineSelected(AudioEngineType.OBOE)
-                        onDismiss()
-                    }
-                )
-
-                // Media3 AudioTrack
+                // Media3 AudioTrack (Predeterminado)
                 AudioEngineOptionCard(
                     title = "Media3 (AudioTrack Estándar)",
-                    badge = "Universal",
-                    description = "Pipeline tradicional de Android. Máxima compatibilidad con dispositivos antiguos o ecualizadores del sistema.",
+                    badge = "Predeterminado",
+                    description = "Pipeline moderno de Android con sincronización A/V óptima, compatibilidad universal y soporte perfecto para auriculares Bluetooth.",
                     icon = Icons.Default.GraphicEq,
                     isSelected = currentEngine == AudioEngineType.MEDIA3,
                     testTag = "audio_engine_media3",
                     onClick = {
                         onEngineSelected(AudioEngineType.MEDIA3)
+                        onDismiss()
+                    }
+                )
+
+                // Google Oboe Nativo C++
+                AudioEngineOptionCard(
+                    title = "Google Oboe (Nativo C++)",
+                    badge = "Baja Latencia",
+                    description = "Motor de latencia ultrabaja en C++ basado en AAudio nativo. Diseñado para audiófilos y procesamiento de señal de bajo nivel.",
+                    icon = Icons.Default.ElectricBolt,
+                    isSelected = currentEngine == AudioEngineType.OBOE,
+                    testTag = "audio_engine_oboe",
+                    onClick = {
+                        onEngineSelected(AudioEngineType.OBOE)
                         onDismiss()
                     }
                 )

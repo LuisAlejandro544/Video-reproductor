@@ -67,6 +67,8 @@ R"glsl(
     uniform float uFsrEnabled;       // 0.0 = desactivado, 1.0 = AMD FSR 1.0 activado
     uniform float uFsrSharpness;     // Rango: [0.0, 1.0]  (Afilado adaptativo al contraste RCAS)
     uniform float uSunMode;          // Rango: [0.0, 1.0]  (0.0 = desactivado, 1.0 = Modo Sol Extremo / Alto Contraste)
+    uniform float uAnime4kMode;      // 0.0 = off, 1.0 = Lite, 2.0 = Pro, 3.0 = Restore
+    uniform float uAnime4kStrength;  // Rango: [0.0, 1.0]  (Intensidad del realce Anime4K)
 
     void main() {
         vec4 color = texture2D(sTexture, vTextureCoord);
@@ -89,7 +91,92 @@ R"glsl(
                 color.rgb *= (1.0 - uBackgroundDim);
             }
         }
-        // 2. AMD FidelityFX Super Resolution 1.0 (EASU + RCAS)
+        // 2. Anime4K: Reescalado y Reconstrucción de Líneas en GPU para Animación (Algoritmo bloc97)
+        else if (uAnime4kMode > 0.5) {
+            vec2 st = uTexelStep;
+            vec4 c  = color;
+
+            vec4 n  = texture2D(sTexture, vTextureCoord + vec2(0.0,  -st.y));
+            vec4 s  = texture2D(sTexture, vTextureCoord + vec2(0.0,   st.y));
+            vec4 e  = texture2D(sTexture, vTextureCoord + vec2( st.x, 0.0));
+            vec4 w  = texture2D(sTexture, vTextureCoord + vec2(-st.x, 0.0));
+            vec4 nw = texture2D(sTexture, vTextureCoord + vec2(-st.x, -st.y));
+            vec4 ne = texture2D(sTexture, vTextureCoord + vec2( st.x, -st.y));
+            vec4 sw = texture2D(sTexture, vTextureCoord + vec2(-st.x,  st.y));
+            vec4 se = texture2D(sTexture, vTextureCoord + vec2( st.x,  st.y));
+
+            // Luminancia Rec. 709 para estimación precisa de bordes en animación cel
+            float lumaC  = dot(c.rgb,  vec3(0.2126, 0.7152, 0.0722));
+            float lumaN  = dot(n.rgb,  vec3(0.2126, 0.7152, 0.0722));
+            float lumaS  = dot(s.rgb,  vec3(0.2126, 0.7152, 0.0722));
+            float lumaE  = dot(e.rgb,  vec3(0.2126, 0.7152, 0.0722));
+            float lumaW  = dot(w.rgb,  vec3(0.2126, 0.7152, 0.0722));
+            float lumaNW = dot(nw.rgb, vec3(0.2126, 0.7152, 0.0722));
+            float lumaNE = dot(ne.rgb, vec3(0.2126, 0.7152, 0.0722));
+            float lumaSW = dot(sw.rgb, vec3(0.2126, 0.7152, 0.0722));
+            float lumaSE = dot(se.rgb, vec3(0.2126, 0.7152, 0.0722));
+
+            // Gradiente Sobel direccional
+            float gx = (lumaNE + 2.0 * lumaE + lumaSE) - (lumaNW + 2.0 * lumaW + lumaSW);
+            float gy = (lumaSW + 2.0 * lumaS + lumaSE) - (lumaNW + 2.0 * lumaN + lumaNE);
+            float edgeMag = length(vec2(gx, gy));
+            float strength = clamp(uAnime4kStrength, 0.0, 1.0);
+
+            // MODO 1: Anime4K Lite (Reconstrucción Adaptativa Bilateral Rápida)
+            if (uAnime4kMode < 1.5) {
+                float wN = exp(-distance(n.rgb, c.rgb) * 5.0);
+                float wS = exp(-distance(s.rgb, c.rgb) * 5.0);
+                float wE = exp(-distance(e.rgb, c.rgb) * 5.0);
+                float wW = exp(-distance(w.rgb, c.rgb) * 5.0);
+                float totalW = 1.0 + wN + wS + wE + wW;
+                vec4 bilateralColor = (c + n * wN + s * wS + e * wE + w * wW) / totalW;
+
+                vec4 minNeighbor = min(c, min(min(n, s), min(e, w)));
+                vec4 edgeEnhanced = mix(bilateralColor, minNeighbor, clamp(edgeMag * 1.2 * strength, 0.0, 0.45));
+                color = mix(c, edgeEnhanced, strength);
+            }
+            // MODO 2: Anime4K Pro (Line Darken + Line Thinning + Bilateral Edge Reconstruction)
+            else if (uAnime4kMode < 2.5) {
+                // Realce de trazo oscuro (Line Darken)
+                float lineWeight = clamp((edgeMag - 0.035) * 3.5, 0.0, 1.0);
+                vec4 minNeighbor = min(c, min(min(n, s), min(e, w)));
+                vec4 darkened = mix(c, minNeighbor, lineWeight * strength * 0.70);
+
+                // Adelgazamiento de líneas borrosas (Line Thin)
+                vec4 thinned = darkened;
+                if (edgeMag > 0.04) {
+                    vec2 gradDir = normalize(vec2(gx, gy));
+                    vec4 posSample = texture2D(sTexture, vTextureCoord + gradDir * st);
+                    vec4 negSample = texture2D(sTexture, vTextureCoord - gradDir * st);
+                    vec4 maxSample = max(posSample, negSample);
+                    thinned = mix(darkened, maxSample, (1.0 - lineWeight) * 0.40 * strength);
+                }
+
+                vec4 minRing = min(c, min(min(n, s), min(e, w)));
+                vec4 maxRing = max(c, max(max(n, s), max(e, w)));
+                color = clamp(thinned, minRing, maxRing);
+            }
+            // MODO 3: Anime4K Restauración / Denoise (Limpieza de artefactos en planos y preservación de líneas)
+            else {
+                float flatWeight = clamp(1.0 - (edgeMag * 4.0), 0.0, 1.0);
+                float wN  = exp(-distance(n.rgb,  c.rgb) * 3.5);
+                float wS  = exp(-distance(s.rgb,  c.rgb) * 3.5);
+                float wE  = exp(-distance(e.rgb,  c.rgb) * 3.5);
+                float wW  = exp(-distance(w.rgb,  c.rgb) * 3.5);
+                float wNW = exp(-distance(nw.rgb, c.rgb) * 3.5) * 0.707;
+                float wNE = exp(-distance(ne.rgb, c.rgb) * 3.5) * 0.707;
+                float wSW = exp(-distance(sw.rgb, c.rgb) * 3.5) * 0.707;
+                float wSE = exp(-distance(se.rgb, c.rgb) * 3.5) * 0.707;
+
+                float totalW = 1.0 + wN + wS + wE + wW + wNW + wNE + wSW + wSE;
+                vec4 denoised = (c + n*wN + s*wS + e*wE + w*wW + nw*wNW + ne*wNE + sw*wSW + se*wSE) / totalW;
+
+                vec4 minNeighbor = min(c, min(min(n, s), min(e, w)));
+                vec4 preserved = mix(denoised, minNeighbor, clamp(edgeMag * 1.5, 0.0, 0.5));
+                color = mix(c, preserved, flatWeight * strength * 0.85);
+            }
+        }
+        // 3. AMD FidelityFX Super Resolution 1.0 (EASU + RCAS)
         else if (uFsrEnabled > 0.5) {
             vec2 st = uTexelStep;
             vec4 c  = color;
@@ -211,7 +298,9 @@ VideoColorEngine::VideoColorEngine()
       muBackgroundDimHandle(-1),
       muFsrEnabledHandle(-1),
       muFsrSharpnessHandle(-1),
-      muSunModeHandle(-1) {
+      muSunModeHandle(-1),
+      muAnime4kModeHandle(-1),
+      muAnime4kStrengthHandle(-1) {
 }
 
 VideoColorEngine::~VideoColorEngine() {
@@ -316,6 +405,8 @@ bool VideoColorEngine::init() {
     muFsrEnabledHandle   = -1;
     muFsrSharpnessHandle = -1;
     muSunModeHandle      = -1;
+    muAnime4kModeHandle  = -1;
+    muAnime4kStrengthHandle = -1;
 
     mProgram = createProgram(sVertexShaderSource, sFragmentShaderSource);
     if (mProgram == 0) {
@@ -342,6 +433,8 @@ bool VideoColorEngine::init() {
     muFsrEnabledHandle   = glGetUniformLocation(mProgram, "uFsrEnabled");
     muFsrSharpnessHandle = glGetUniformLocation(mProgram, "uFsrSharpness");
     muSunModeHandle      = glGetUniformLocation(mProgram, "uSunMode");
+    muAnime4kModeHandle  = glGetUniformLocation(mProgram, "uAnime4kMode");
+    muAnime4kStrengthHandle = glGetUniformLocation(mProgram, "uAnime4kStrength");
 
     LOGI("VideoColorEngine inicializado exitosamente en OpenGL ES.");
     return true;
@@ -363,7 +456,9 @@ bool VideoColorEngine::render(
     float backgroundDim,
     float fsrEnabled,
     float fsrSharpness,
-    float sunMode
+    float sunMode,
+    float anime4kMode,
+    float anime4kStrength
 ) {
     std::lock_guard<std::mutex> lock(mEngineMutex);
     if (mProgram == 0) {
@@ -392,6 +487,8 @@ bool VideoColorEngine::render(
     if (muFsrEnabledHandle >= 0) glUniform1f(muFsrEnabledHandle, fsrEnabled);
     if (muFsrSharpnessHandle >= 0) glUniform1f(muFsrSharpnessHandle, fsrSharpness);
     if (muSunModeHandle >= 0)    glUniform1f(muSunModeHandle, sunMode);
+    if (muAnime4kModeHandle >= 0) glUniform1f(muAnime4kModeHandle, anime4kMode);
+    if (muAnime4kStrengthHandle >= 0) glUniform1f(muAnime4kStrengthHandle, anime4kStrength);
 
     // Configurar texel step para filtro de nitidez y desenfoque
     if (muTexelStepHandle >= 0) {

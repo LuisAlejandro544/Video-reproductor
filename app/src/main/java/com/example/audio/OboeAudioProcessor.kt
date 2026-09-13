@@ -23,7 +23,7 @@ class OboeAudioProcessor : BaseAudioProcessor() {
 
     private val TAG = "OboeAudioProcessor"
 
-    var currentEngine: AudioEngineType = AudioEngineType.OBOE
+    var currentEngine: AudioEngineType = AudioEngineType.MEDIA3
         set(value) {
             field = value
             try {

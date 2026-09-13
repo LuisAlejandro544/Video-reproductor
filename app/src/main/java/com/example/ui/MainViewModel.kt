@@ -5,14 +5,18 @@ import android.content.Context
 import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.audio.AudioEngineType
 import com.example.data.AppDatabase
+import com.example.data.AppPreferences
 import com.example.data.VideoEntity
 import com.example.data.VideoRepository
 import com.example.model.VideoItem
 import com.example.utils.VideoUtils
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -21,16 +25,32 @@ import kotlinx.coroutines.withContext
  * MainViewModel - Administrador de estado central para la biblioteca de videos y reproducción.
  *
  * Utiliza AndroidViewModel para acceder al contexto de aplicación de forma segura e instanciar
- * la base de datos local Room a través de VideoRepository.
+ * la base de datos local Room a través de VideoRepository, así como persistir las preferencias
+ * de usuario (como el motor de audio Media3 vs Oboe) en AppPreferences.
  */
 class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val repository: VideoRepository
+    private val appPreferences = AppPreferences.getInstance(application)
 
     /**
      * Flujo observable con el historial completo de videos importados y vistos.
      */
     val importedVideos: StateFlow<List<VideoEntity>>
+
+    /**
+     * Motor de audio activo con persistencia duradera en disco (Media3 por defecto).
+     */
+    private val _selectedAudioEngine = MutableStateFlow(appPreferences.selectedAudioEngine)
+    val selectedAudioEngine: StateFlow<AudioEngineType> = _selectedAudioEngine.asStateFlow()
+
+    /**
+     * Actualiza y persiste la selección de motor de audio del usuario.
+     */
+    fun setAudioEngine(engine: AudioEngineType) {
+        appPreferences.selectedAudioEngine = engine
+        _selectedAudioEngine.value = engine
+    }
 
     init {
         val database = AppDatabase.getInstance(application)

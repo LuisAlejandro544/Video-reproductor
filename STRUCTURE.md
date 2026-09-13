@@ -37,8 +37,8 @@ Este documento detalla la organización de carpetas, responsabilidades de cada m
 │       │   │   ├── native-lib.cpp    # Puntos de entrada JNI (puente hacia Kotlin con nativeFlush)
 │       │   │   ├── OboeAudioEngine.h # Declaración de la clase del motor de audio Oboe (búfer circular estático, flush() y DSP)
 │       │   │   ├── OboeAudioEngine.cpp # Implementación nativa con búfer de anillo estático, vaciado atómico instantáneo y filtros DSP
-│       │   │   ├── VideoColorEngine.h # Declaración del motor de sombreadores OpenGL ES (incluye uniform uSunMode)
-│       │   │   └── VideoColorEngine.cpp # Shaders GLSL, texturizado OES, matriz de color, nitidez, descanso visual, modo sol extremo, desenfoque pillarbox y AMD FSR 1.0 (EASU + RCAS)
+│       │   │   ├── VideoColorEngine.h # Declaración del motor de sombreadores OpenGL ES (incluye uniforms uSunMode, uAnime4kMode, uAnime4kStrength)
+│       │   │   └── VideoColorEngine.cpp # Shaders GLSL, texturizado OES, matriz de color, nitidez, descanso visual, modo sol extremo, desenfoque pillarbox, AMD FSR 1.0 (EASU + RCAS) y Anime4K (bloc97 Lite/Pro/Restore)
 │       │   │
 │       │   ├── java/com/example/     # Código fuente Kotlin (UI y Lógica)
 │       │   │   ├── MainActivity.kt   # Actividad raíz y enrutador de pantallas
@@ -51,11 +51,12 @@ Este documento detalla la organización de carpetas, responsabilidades de cada m
 │       │   │   │
 │       │   │   ├── opengl/           # Capa de renderizado acelerado por GPU
 │       │   │   │   ├── NativeVideoFilter.kt   # Puente JNI con VideoColorEngine en C++
-│       │   │   │   ├── VideoEqualizerState.kt # Modelo de parámetros de ecualización, modo sol, descanso visual, pillarbox blur y AMD FSR 1.0
-│       │   │   │   └── OpenGLVideoSurface.kt  # GLSurfaceView.Renderer (doble paso con Pillarbox Blur, Modo Sol y AMD FSR 1.0) y VideoPlayerView
+│       │   │   │   ├── VideoEqualizerState.kt # Modelo de parámetros de ecualización, modo sol, descanso visual, pillarbox blur, AMD FSR 1.0 y Anime4kMode
+│       │   │   │   └── OpenGLVideoSurface.kt  # GLSurfaceView.Renderer (doble paso con Pillarbox Blur, Modo Sol, AMD FSR 1.0 y Anime4K) y VideoPlayerView
 │       │   │   │
-│       │   │   ├── data/             # Persistencia local con Room (SQLite)
+│       │   │   ├── data/             # Persistencia local con Room (SQLite) y SharedPreferences
 │       │   │   │   ├── AppDatabase.kt         # Base de datos Room singleton
+│       │   │   │   ├── AppPreferences.kt      # Almacenamiento persistente de configuraciones (motor de audio Media3/Oboe)
 │       │   │   │   ├── VideoDao.kt            # Operaciones reactivas DAO con Flow
 │       │   │   │   ├── VideoEntity.kt         # Entidad persistente de video importado/visto
 │       │   │   │   └── VideoRepository.kt     # Abstracción y operaciones asíncronas
@@ -67,11 +68,12 @@ Este documento detalla la organización de carpetas, responsabilidades de cada m
 │       │   │   │   └── PlayerLoadControlHelper.kt # Búfer de RAM adaptativo anti-OOM para Android Go y terminales modestos
 │       │   │   │
 │       │   │   ├── ui/               # Componentes visuales Jetpack Compose
+│       │   │   │   ├── Anime4KSheet.kt        # Pantalla exclusiva e independiente de Reconstrucción de Animación Anime4K
 │       │   │   │   ├── AspectRatioMode.kt     # Modos de relación de aspecto geométrico (FIT, ZOOM, FILL)
 │       │   │   │   ├── AspectRatioSheet.kt    # Pantalla exclusiva e independiente de relación de aspecto
 │       │   │   │   ├── AudioEngineSheet.kt    # Pantalla exclusiva e independiente de selección de motor de audio
 │       │   │   │   ├── FsrUpscaleSheet.kt     # Pantalla exclusiva e independiente de Super Resolución AMD FSR 1.0
-│       │   │   │   ├── MainViewModel.kt       # ViewModel central de la biblioteca e importados
+│       │   │   │   ├── MainViewModel.kt       # ViewModel central de la biblioteca e importados con StateFlow de audio
 │       │   │   │   ├── PillarboxBlurSheet.kt  # Pantalla exclusiva e independiente de desenfoque de fondo vertical (Pillarbox)
 │       │   │   │   ├── PlaybackSpeedSheet.kt  # Pantalla exclusiva e independiente de velocidad de reproducción (hasta 2x)
 │       │   │   │   ├── PlayerToolsSideSheet.kt # Panel lateral de navegación exclusiva entre herramientas
@@ -80,8 +82,8 @@ Este documento detalla la organización de carpetas, responsabilidades de cada m
 │       │   │   │   ├── SubtitlesBottomSheet.kt # Panel modal de selección de subtítulos internos/externos y tamaño tipográfico
 │       │   │   │   ├── SunModeSheet.kt        # Pantalla exclusiva e independiente de Modo Sol Extremo y Accesibilidad en GPU
 │       │   │   │   ├── VideoEqualizerSheet.kt # Pantalla exclusiva e independiente de ecualización de video (color, nitidez, descanso)
-│       │   │   │   ├── VideoImportScreen.kt   # Pantalla interactiva: biblioteca de importados, duración, progreso y selectores
-│       │   │   │   ├── VideoPlayerScreen.kt   # Pantalla de reproducción multimedia (OpenGL, sensor de rotación por hardware, avance 2X y gestos)
+│       │   │   │   ├── VideoImportScreen.kt   # Pantalla interactiva: biblioteca, diálogo de confirmación de eliminación y selectores
+│       │   │   │   ├── VideoPlayerScreen.kt   # Pantalla de reproducción (doble toque 5s adelanto/atraso, rotación, 2X y gestos)
 │       │   │   │   ├── VideoSourceDialog.kt   # Diálogo para alternar Galería / Gestor de archivos
 │       │   │   │   ├── VoiceNightAudioSheet.kt # Pantalla exclusiva e independiente de Compresor Dinámico y Voces Claras en C++
 │       │   │   │   └── theme/                 # Paleta de colores, tipografía y tema oscuro

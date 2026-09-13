@@ -5,10 +5,15 @@ import com.example.opengl.VideoEqualizerState
 import com.example.ui.AspectRatioMode
 import org.junit.Assert.*
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
 
 /**
  * Pruebas unitarias locales para la lógica de dominio y estados por defecto.
  */
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [34])
 class ExampleUnitTest {
     @Test
     fun addition_isCorrect() {
@@ -40,8 +45,12 @@ class ExampleUnitTest {
     @Test
     fun oboeAudioProcessor_configuresAndFlushesSafely() {
         val processor = com.example.audio.OboeAudioProcessor()
-        processor.setEngine(AudioEngineType.OBOE)
-        assertEquals(AudioEngineType.OBOE, processor.getCurrentEngine())
+        // El motor predeterminado es MEDIA3
+        assertEquals(AudioEngineType.MEDIA3, processor.currentEngine)
+
+        // Conmutación a OBOE
+        processor.currentEngine = AudioEngineType.OBOE
+        assertEquals(AudioEngineType.OBOE, processor.currentEngine)
 
         // Configuración de formato PCM 48kHz estéreo 16-bit
         val inputFormat = androidx.media3.common.audio.AudioProcessor.AudioFormat(

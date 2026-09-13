@@ -60,12 +60,14 @@ Este documento detalla las fases de desarrollo planificadas para convertir a **N
   - **Filtro de Luz Azul / Modo Descanso Visual:** Atenuación selectiva del espectro azul y calidez ámbar [0.0f a 1.0f] para confort nocturno.
   - **Desenfoque de Fondo para Videos Verticales (Pillarbox Blur):** Relleno dinámico de barras negras laterales con versión ampliada, desenfocada (Gaussiano de 9 toques) y atenuada del video acelerada por GPU.
   - **AMD FidelityFX Super Resolution 1.0 (FSR 1.0):** Reconstrucción espacial adaptativa (EASU) con detección de aristas por gradiente y afilado dependiente del contraste local (RCAS) en shader GLSL para escalado y nitidez de videos de baja resolución.
-- [x] Presets preconfigurados instantáneos: *Normal*, *Super-Resolución FSR*, *Descanso Visual*, *Vívido*, *Cine*, *Nocturno*, *Alto Contraste* y *Blanco y Negro*.
+  - **Reconstrucción y Realce Anime4K (bloc97):** Filtros GLSL en GPU para series y anime con modos Lite (bilateral rápido), Pro (perfilado y adelgazamiento de trazos) y Restauración (denoise/despeckle para fondos lisos) con regulador de intensidad.
+- [x] Presets preconfigurados instantáneos: *Normal*, *Anime 4K (Pro)*, *Super-Resolución FSR*, *Descanso Visual*, *Vívido*, *Cine*, *Nocturno*, *Alto Contraste* y *Blanco y Negro*.
 - [x] Control de velocidad de reproducción (hasta 2.0x) con *Sonic Pitch Preservation* activo sin distorsión de audio.
 - [x] **Arquitectura Modular de Herramientas del Reproductor (Pantallas Independientes):**
   - Panel lateral derecho interactivo (`PlayerToolsSideSheet`) para navegación limpia y desacoplada entre herramientas.
   - Pantallas y hojas exclusivas e independientes para cada funcionalidad:
     - `VideoEqualizerSheet`: Ajuste dedicado de brillo, contraste, saturación, gamma, nitidez y presets de color.
+    - `Anime4KSheet`: Pantalla dedicada de configuración de modos Anime4K (Lite, Pro, Restauración) y deslizador de fuerza.
     - `SunModeSheet`: Pantalla independiente de compensación para exteriores bajo luz solar intensa y perfiles de alto contraste para accesibilidad visual.
     - `PillarboxBlurSheet`: Control exclusivo para desenfoque y relleno de barras laterales en videos verticales.
     - `FsrUpscaleSheet`: Pantalla dedicada de Super Resolución AMD FidelityFX FSR 1.0 (EASU + RCAS).
@@ -88,7 +90,7 @@ Este documento detalla las fases de desarrollo planificadas para convertir a **N
   - Retorno garantizado a vertical (`SCREEN_ORIENTATION_PORTRAIT`) al finalizar el video o al volver a la biblioteca principal.
 - [x] **Centro de Configuración Ergonómico Modular (`SettingsScreen`):**
   - Reemplazo de la lista larga monolítica por una arquitectura por subpantallas independientes (Motor de Audio, Canales, Prueba de Sonido, Telemetría y Acerca de).
-- [x] Componentes modulares Jetpack Compose: `OpenGLVideoSurface`, `VideoEqualizerSheet`, `StereoMonoSheet`, `SunModeSheet`, `VoiceNightAudioSheet`, `PillarboxBlurSheet`, `FsrUpscaleSheet`, `AspectRatioSheet`, `AudioEngineSheet` y `PlaybackSpeedSheet`.
+- [x] Componentes modulares Jetpack Compose: `OpenGLVideoSurface`, `VideoEqualizerSheet`, `Anime4KSheet`, `StereoMonoSheet`, `SunModeSheet`, `VoiceNightAudioSheet`, `PillarboxBlurSheet`, `FsrUpscaleSheet`, `AspectRatioSheet`, `AudioEngineSheet` y `PlaybackSpeedSheet`.
 
 ---
 
@@ -103,6 +105,17 @@ Este documento detalla las fases de desarrollo planificadas para convertir a **N
   - Carga de subtítulos externos mediante Storage Access Framework (`.srt` y `.vtt`).
   - Panel modal inferior interactivo (`SubtitlesBottomSheet`) con selector de pistas y ajuste de tamaño tipográfico (Pequeño, Normal, Grande, Extra Grande).
   - Botón de acceso directo `CC` / `CC On` en la barra de controles inferior.
+- [x] **Persistencia de Motor de Audio y Media3 como Predeterminado:**
+  - Media3 configurado como motor de audio estándar por defecto con sincronización A/V óptima y soporte Bluetooth universal.
+  - Google Oboe mantenido como opción C++ de baja latencia seleccionable.
+  - Persistencia completa en disco con `AppPreferences` para conservar la selección tras cerrar y reabrir la app.
+- [x] **Salto Rápido por Doble Toque (+5s / -5s):**
+  - Doble toque lateral izquierdo: atrasa 5 segundos (-5s).
+  - Doble toque lateral derecho: adelanta 5 segundos (+5s).
+  - Indicador visual HUD circular animado y respuesta háptica.
+- [x] **Confirmación de Seguridad al Eliminar Videos:**
+  - Diálogo modal de confirmación antes de eliminar videos individuales en la biblioteca.
+  - Aclaración de protección de archivos originales en el almacenamiento del dispositivo.
 
 ---
 

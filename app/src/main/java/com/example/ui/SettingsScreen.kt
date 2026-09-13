@@ -521,23 +521,23 @@ private fun AudioEngineSubScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             EngineSelectionCard(
+                engineType = AudioEngineType.MEDIA3,
+                isSelected = selectedEngine == AudioEngineType.MEDIA3,
+                badgeText = "Predeterminado (Universal)",
+                badgeColor = Color(0xFF0284C7),
+                details = "Procesamiento a través del pipeline estándar de Android Media3 y AudioTrack del sistema. Garantiza sincronización A/V automática, compensación de latencia Bluetooth y máxima compatibilidad.",
+                onSelect = { onEngineSelected(AudioEngineType.MEDIA3) },
+                testTag = "select_media3_engine_card"
+            )
+
+            EngineSelectionCard(
                 engineType = AudioEngineType.OBOE,
                 isSelected = selectedEngine == AudioEngineType.OBOE,
                 badgeText = "Baja Latencia (C++)",
                 badgeColor = Color(0xFF10B981),
-                details = "Procesamiento nativo en C++ mediante Google Oboe con canal directo AAudio (Android 8.0+) o OpenSL ES. Minimiza la latencia de hardware y previene microcortes en archivos pesados.",
+                details = "Procesamiento nativo en C++ mediante Google Oboe con canal directo AAudio (Android 8.0+) o OpenSL ES. Minimiza la latencia de hardware para procesamiento acústico de bajo nivel.",
                 onSelect = { onEngineSelected(AudioEngineType.OBOE) },
                 testTag = "select_oboe_engine_card"
-            )
-
-            EngineSelectionCard(
-                engineType = AudioEngineType.MEDIA3,
-                isSelected = selectedEngine == AudioEngineType.MEDIA3,
-                badgeText = "Estándar Android",
-                badgeColor = Color(0xFF64748B),
-                details = "Procesamiento a través del pipeline estándar de Android Media3 y AudioTrack del sistema. Permite compatibilidad universal con efectos del sistema operativo.",
-                onSelect = { onEngineSelected(AudioEngineType.MEDIA3) },
-                testTag = "select_media3_engine_card"
             )
 
             Surface(

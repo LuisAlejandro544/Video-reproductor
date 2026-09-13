@@ -91,6 +91,9 @@ fun MainVideoApp(
     // Observar la lista de videos importados y vistos desde la base de datos Room
     val importedVideos by viewModel.importedVideos.collectAsStateWithLifecycle()
 
+    // Observar el motor de audio persistido en disco (Media3 por defecto inicial)
+    val selectedAudioEngine by viewModel.selectedAudioEngine.collectAsStateWithLifecycle()
+
     // Destino actual y previo de navegación
     var currentScreen by remember { mutableStateOf(AppScreen.HOME) }
     var previousScreen by remember { mutableStateOf(AppScreen.HOME) }
@@ -101,9 +104,6 @@ fun MainVideoApp(
             activity?.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
         }
     }
-
-    // Estado del motor de audio seleccionado (por defecto OBOE nativo de baja latencia)
-    var selectedAudioEngine by remember { mutableStateOf(AudioEngineType.OBOE) }
 
     // Estado del video seleccionado y posición actual en ms (para conservar al entrar a configuración)
     var currentVideo by remember { mutableStateOf<VideoItem?>(null) }
@@ -159,7 +159,7 @@ fun MainVideoApp(
                 SettingsScreen(
                     currentEngine = selectedAudioEngine,
                     onEngineChanged = { newEngine ->
-                        selectedAudioEngine = newEngine
+                        viewModel.setAudioEngine(newEngine)
                     },
                     onNavigateBack = {
                         currentScreen = previousScreen
@@ -195,6 +195,9 @@ fun MainVideoApp(
                         onOpenSettings = {
                             previousScreen = AppScreen.PLAYER
                             currentScreen = AppScreen.SETTINGS
+                        },
+                        onAudioEngineChange = { newEngine ->
+                            viewModel.setAudioEngine(newEngine)
                         },
                         modifier = Modifier.fillMaxSize()
                     )
