@@ -22,7 +22,19 @@ class GreetingScreenshotTest {
   @Test
   fun greeting_screenshot() {
     composeTestRule.setContent { MyApplicationTheme { Greeting("Robolectric") } }
-
     composeTestRule.onRoot().captureRoboImage(filePath = "src/test/screenshots/greeting.png")
+  }
+
+  @Test
+  fun audio_engine_selection_step_renders() {
+    composeTestRule.setContent {
+      MyApplicationTheme {
+        com.example.ui.onboarding.AudioEngineSelectionStep(
+          selectedEngine = com.example.audio.AudioEngineType.MEDIA3,
+          onEngineSelected = {}
+        )
+      }
+    }
+    composeTestRule.onRoot().assertExists()
   }
 }

@@ -16,6 +16,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -39,7 +40,9 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
@@ -81,19 +84,7 @@ import com.example.subtitles.AssSubtitleOverlay
 import com.example.subtitles.SubtitleSize
 import com.example.subtitles.SubtitleTrackItem
 import com.example.subtitles.SubtitleUtils
-import com.example.ui.player.BottomControlsBar
-import com.example.ui.player.CenterPlaybackControls
-import com.example.ui.player.ControlsUnlockButton
-import com.example.ui.player.DoubleTapSeekIndicator
-import com.example.ui.player.DoubleTapSeekSide
-import com.example.ui.player.FastForward2xBadge
-import com.example.ui.player.GestureIndicatorType
-import com.example.ui.player.MinimalistGestureIndicator
-import com.example.ui.player.PlayerErrorOverlay
-import com.example.ui.player.PlayerGestureSurface
-import com.example.ui.player.PlayerOrientationHandler
-import com.example.ui.player.SoundStatusHudBanner
-import com.example.ui.player.TopControlsBar
+import com.example.ui.player.*
 import com.example.utils.VideoUtils
 import kotlin.math.roundToInt
 import kotlinx.coroutines.Job
@@ -231,6 +222,14 @@ fun VideoPlayerScreen(
         mutableStateOf(GraphicsEngineType.OPENGL_ES)
     }
     var showGraphicsEngineSheet by remember { mutableStateOf(false) }
+
+    // Zoom táctil (Pinch-to-zoom con dos dedos hasta x10) y desplazamiento de encuadre
+    var zoomScale by remember(videoItem.uri) { mutableFloatStateOf(1.0f) }
+    var panOffsetX by remember(videoItem.uri) { mutableFloatStateOf(0f) }
+    var panOffsetY by remember(videoItem.uri) { mutableFloatStateOf(0f) }
+    var showZoomHud by remember { mutableStateOf(false) }
+    var zoomHudHideJob by remember { mutableStateOf<Job?>(null) }
+    var showZoomSheet by remember { mutableStateOf(false) }
 
     // Modo de canal de audio: STEREO estándar por defecto o individual guardado
     var audioChannelMode by remember(videoItem.uri, initialVideoEntity) {
@@ -769,64 +768,43 @@ fun VideoPlayerScreen(
                 containerHeight = size.height
             }
     ) {
-        // Superficie Adaptativa de Video (Vulkan 1.1+ Zero-Copy con Fallback Automático a OpenGL ES)
-        AdaptiveVideoPlayerView(
-            player = exoPlayer,
-            preferredEngine = currentGraphicsEngine,
-            equalizerState = equalizerState,
-            aspectRatioMode = currentAspectMode,
-            videoWidth = videoWidth,
-            videoHeight = videoHeight,
-            onActiveEngineChanged = { active ->
-                currentGraphicsEngine = active
-            },
-            modifier = Modifier.fillMaxSize()
-        )
-
-        // Capa de Subtítulos Complejos SSA/ASS (Procesados por Rust Core nativo)
-        if (subtitlesEnabled && externalSubtitle?.assDialogues?.isNotEmpty() == true) {
-            AssSubtitleOverlay(
-                dialogues = externalSubtitle!!.assDialogues,
-                styles = externalSubtitle!!.assStyles,
-                currentPositionMs = currentPositionMs,
-                subtitleSize = subtitleSize,
-                showControls = showControls,
+        // Superficie Adaptativa de Video con soporte de Zoom táctil (hasta x10) y paneo
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .clipToBounds()
+                .graphicsLayer {
+                    scaleX = zoomScale
+                    scaleY = zoomScale
+                    translationX = panOffsetX
+                    translationY = panOffsetY
+                }
+        ) {
+            AdaptiveVideoPlayerView(
+                player = exoPlayer,
+                preferredEngine = currentGraphicsEngine,
+                equalizerState = equalizerState,
+                aspectRatioMode = currentAspectMode,
+                videoWidth = videoWidth,
+                videoHeight = videoHeight,
+                onActiveEngineChanged = { active ->
+                    currentGraphicsEngine = active
+                },
                 modifier = Modifier.fillMaxSize()
-            )
-        } else if (subtitlesEnabled && currentCues.isNotEmpty()) {
-            // Capa de Subtítulos estándar (SRT / WebVTT y pistas embebidas)
-            AndroidView(
-                factory = { ctx ->
-                    SubtitleView(ctx).apply {
-                        setUserDefaultStyle()
-                        setStyle(
-                            CaptionStyleCompat(
-                                android.graphics.Color.WHITE,
-                                android.graphics.Color.TRANSPARENT,
-                                android.graphics.Color.TRANSPARENT,
-                                CaptionStyleCompat.EDGE_TYPE_OUTLINE,
-                                android.graphics.Color.BLACK,
-                                null
-                            )
-                        )
-                        setFractionalTextSize(subtitleSize.fraction)
-                    }
-                },
-                update = { view ->
-                    view.setFractionalTextSize(subtitleSize.fraction)
-                    view.setCues(currentCues)
-                },
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(
-                        start = 24.dp,
-                        end = 24.dp,
-                        bottom = if (showControls) 96.dp else 28.dp
-                    )
             )
         }
 
-        // Capa interactiva de gestos táctiles
+        // Capa modular de Subtítulos (SSA/ASS procesados por Rust Core nativo y SRT/WebVTT)
+        PlayerSubtitleLayer(
+            subtitlesEnabled = subtitlesEnabled,
+            externalSubtitle = externalSubtitle,
+            currentCues = currentCues,
+            currentPositionMs = currentPositionMs,
+            subtitleSize = subtitleSize,
+            showControls = showControls
+        )
+
+        // Capa interactiva de gestos táctiles (incluyendo soporte multitáctil de zoom hasta x10)
         PlayerGestureSurface(
             isControlsLocked = isControlsLocked,
             playbackSpeed = playbackSpeed,
@@ -838,6 +816,32 @@ fun VideoPlayerScreen(
             onVolumeChange = { currentVolume = it },
             currentBrightness = currentBrightness,
             onBrightnessChange = { currentBrightness = it },
+            zoomScale = zoomScale,
+            panOffsetX = panOffsetX,
+            panOffsetY = panOffsetY,
+            onZoomChange = { newScale, newPanX, newPanY ->
+                zoomScale = newScale
+                panOffsetX = newPanX
+                panOffsetY = newPanY
+                showZoomHud = true
+                zoomHudHideJob?.cancel()
+                zoomHudHideJob = coroutineScope.launch {
+                    delay(2000)
+                    showZoomHud = false
+                }
+            },
+            onResetZoom = {
+                onPlayClickSound()
+                zoomScale = 1.0f
+                panOffsetX = 0f
+                panOffsetY = 0f
+                showZoomHud = true
+                zoomHudHideJob?.cancel()
+                zoomHudHideJob = coroutineScope.launch {
+                    delay(1200)
+                    showZoomHud = false
+                }
+            },
             onSingleTap = {
                 showControls = !showControls
                 lastInteractionTime = System.currentTimeMillis()
@@ -887,107 +891,40 @@ fun VideoPlayerScreen(
             }
         )
 
-        // Botón flotante para desbloquear la pantalla
-        if (isControlsLocked) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .statusBarsPadding()
-                    .padding(20.dp),
-                contentAlignment = Alignment.TopStart
-            ) {
-                ControlsUnlockButton(onUnlock = {
-                    onPlayClickSound()
-                    isControlsLocked = false
-                })
-            }
-        }
-
-        // Indicador de carga / búfer
-        if (isBuffering) {
-            CircularProgressIndicator(
-                color = MaterialTheme.colorScheme.primary,
-                strokeWidth = 3.dp,
-                modifier = Modifier
-                    .size(52.dp)
-                    .align(Alignment.Center)
-            )
-        }
-
-        // Indicador flotante minimalista para brillo o volumen
-        AnimatedVisibility(
-            visible = gestureIndicatorVisible && gestureIndicatorType != null,
-            enter = fadeIn(tween(150)) + scaleIn(tween(150), initialScale = 0.88f),
-            exit = fadeOut(tween(350)),
-            modifier = Modifier
-                .align(
-                    if (gestureIndicatorType == GestureIndicatorType.BRIGHTNESS) {
-                        Alignment.CenterStart
-                    } else {
-                        Alignment.CenterEnd
-                    }
-                )
-                .padding(horizontal = 32.dp)
-        ) {
-            gestureIndicatorType?.let { type ->
-                val fraction = if (type == GestureIndicatorType.BRIGHTNESS) {
-                    currentBrightness
-                } else {
-                    if (maxVolume > 0) currentVolume.toFloat() / maxVolume.toFloat() else 0.5f
+        // Capa modular de Indicadores e Interfaz HUD en tiempo real
+        PlayerHudOverlay(
+            isControlsLocked = isControlsLocked,
+            onUnlockControls = {
+                onPlayClickSound()
+                isControlsLocked = false
+            },
+            isBuffering = isBuffering,
+            gestureIndicatorVisible = gestureIndicatorVisible,
+            gestureIndicatorType = gestureIndicatorType,
+            currentBrightness = currentBrightness,
+            currentVolume = currentVolume,
+            maxVolume = maxVolume,
+            isFastForwarding2x = isFastForwarding2x,
+            showZoomHud = showZoomHud,
+            showControls = showControls,
+            zoomScale = zoomScale,
+            onResetZoom = {
+                onPlayClickSound()
+                zoomScale = 1.0f
+                panOffsetX = 0f
+                panOffsetY = 0f
+                showZoomHud = true
+                zoomHudHideJob?.cancel()
+                zoomHudHideJob = coroutineScope.launch {
+                    delay(1200)
+                    showZoomHud = false
                 }
-                MinimalistGestureIndicator(type = type, fraction = fraction)
-            }
-        }
-
-        // Indicador HUD para Avance Rápido a 2X
-        AnimatedVisibility(
-            visible = isFastForwarding2x,
-            enter = fadeIn(tween(150)) + scaleIn(tween(150), initialScale = 0.88f),
-            exit = fadeOut(tween(250)),
-            modifier = Modifier
-                .align(Alignment.TopCenter)
-                .padding(top = 36.dp)
-        ) {
-            FastForward2xBadge()
-        }
-
-        // Banner flotante para aviso de volumen a 0 ("Sin sonido") o reactivado ("Sonido activado")
-        AnimatedVisibility(
-            visible = soundBannerText != null,
-            enter = fadeIn(tween(180)) + scaleIn(tween(180), initialScale = 0.88f),
-            exit = fadeOut(tween(250)),
-            modifier = Modifier
-                .align(Alignment.TopCenter)
-                .padding(top = if (isFastForwarding2x) 86.dp else 40.dp)
-        ) {
-            soundBannerText?.let { title ->
-                SoundStatusHudBanner(
-                    isMuted = isSoundBannerMuted,
-                    title = title,
-                    subtitle = soundBannerSubtext ?: ""
-                )
-            }
-        }
-
-        // Indicador HUD para Doble Tap (+5s / -5s)
-        AnimatedVisibility(
-            visible = doubleTapSeekSide != null,
-            enter = fadeIn(tween(100)) + scaleIn(tween(100), initialScale = 0.82f),
-            exit = fadeOut(tween(250)),
-            modifier = Modifier
-                .align(
-                    if (doubleTapSeekSide == DoubleTapSeekSide.LEFT) {
-                        Alignment.CenterStart
-                    } else {
-                        Alignment.CenterEnd
-                    }
-                )
-                .padding(horizontal = 48.dp)
-        ) {
-            doubleTapSeekSide?.let { side ->
-                DoubleTapSeekIndicator(side = side)
-            }
-        }
+            },
+            soundBannerText = soundBannerText,
+            soundBannerSubtext = soundBannerSubtext,
+            isSoundBannerMuted = isSoundBannerMuted,
+            doubleTapSeekSide = doubleTapSeekSide
+        )
 
         // Interfaz superpuesta de controles
         AnimatedVisibility(
@@ -1142,12 +1079,15 @@ fun VideoPlayerScreen(
             }
         }
 
-        // Panel Lateral de Herramientas
-        PlayerToolsSideSheet(
-            visible = showToolsSideSheet,
-            currentAudioEngine = activeAudioEngine,
-            onDismiss = { showToolsSideSheet = false },
+        // Hojas modales y menús desacoplados
+        PlayerSheetHost(
+            showToolsSideSheet = showToolsSideSheet,
+            onDismissToolsSideSheet = {
+                onPlayClickSound()
+                showToolsSideSheet = false
+            },
             onSelectTool = { tool ->
+                onPlayClickSound()
                 when (tool) {
                     PlayerToolItem.LOCK -> {
                         isControlsLocked = true
@@ -1165,267 +1105,229 @@ fun VideoPlayerScreen(
                     PlayerToolItem.ASPECT_RATIO -> showAspectRatioSheet = true
                     PlayerToolItem.AUDIO_ENGINE -> showAudioEngineSheet = true
                     PlayerToolItem.GRAPHICS_ENGINE -> showGraphicsEngineSheet = true
+                    PlayerToolItem.ZOOM -> showZoomSheet = true
                 }
-            }
-        )
-
-        // Hojas modales para herramientas
-        if (showStereoMonoSheet) {
-            StereoMonoSheet(
-                currentMode = audioChannelMode,
-                onModeSelected = { mode ->
-                    audioChannelMode = mode
-                    oboeAudioProcessor.channelMode = mode
-                    OboeAudioEngine.setChannelMode(mode)
-                    saveSettings()
-                },
-                onDismiss = {
-                    showStereoMonoSheet = false
-                    saveSettings()
-                }
-            )
-        }
-
-        if (showEqualizerSheet) {
-            VideoEqualizerSheet(
-                state = equalizerState,
-                onStateChange = {
-                    equalizerState = it
-                    saveSettings()
-                },
-                onDismiss = {
-                    showEqualizerSheet = false
-                    saveSettings()
-                }
-            )
-        }
-
-        if (showSunModeSheet) {
-            SunModeSheet(
-                state = equalizerState,
-                onStateChange = {
-                    equalizerState = it
-                    saveSettings()
-                },
-                onDismiss = {
-                    showSunModeSheet = false
-                    saveSettings()
-                }
-            )
-        }
-
-        if (showPillarboxSheet) {
-            PillarboxBlurSheet(
-                state = equalizerState,
-                onStateChange = {
-                    equalizerState = it
-                    saveSettings()
-                },
-                onDismiss = {
-                    showPillarboxSheet = false
-                    saveSettings()
-                }
-            )
-        }
-
-        if (showFsrSheet) {
-            FsrUpscaleSheet(
-                state = equalizerState,
-                onStateChange = {
-                    equalizerState = it
-                    saveSettings()
-                },
-                onDismiss = {
-                    showFsrSheet = false
-                    saveSettings()
-                }
-            )
-        }
-
-        if (showAnime4kSheet) {
-            Anime4KSheet(
-                state = equalizerState,
-                onStateChange = {
-                    equalizerState = it
-                    saveSettings()
-                },
-                onDismiss = {
-                    showAnime4kSheet = false
-                    saveSettings()
-                }
-            )
-        }
-
-        if (showVoiceNightSheet) {
-            VoiceNightAudioSheet(
-                currentAudioEngine = activeAudioEngine,
-                onSwitchToOboe = {
-                    activeAudioEngine = AudioEngineType.OBOE
-                    oboeAudioProcessor.currentEngine = AudioEngineType.OBOE
-                    onAudioEngineChange?.invoke(AudioEngineType.OBOE)
-                    saveSettings()
-                },
-                onDismiss = {
-                    showVoiceNightSheet = false
-                    saveSettings()
-                }
-            )
-        }
-
-        if (showSpeedSheet) {
-            PlaybackSpeedSheet(
-                currentSpeed = playbackSpeed,
-                onSpeedSelected = { newSpeed ->
-                    playbackSpeed = newSpeed
-                    exoPlayer.playbackParameters = PlaybackParameters(newSpeed, 1.0f)
-                    saveSettings()
-                },
-                onDismiss = {
-                    showSpeedSheet = false
-                    saveSettings()
-                }
-            )
-        }
-
-        if (showAspectRatioSheet) {
-            AspectRatioSheet(
-                currentMode = currentAspectMode,
-                onModeSelected = {
-                    currentAspectMode = it
-                    saveSettings()
-                },
-                onDismiss = {
-                    showAspectRatioSheet = false
-                    saveSettings()
-                }
-            )
-        }
-
-        if (showAudioEngineSheet) {
-            AudioEngineSheet(
-                currentEngine = activeAudioEngine,
-                onEngineSelected = { engine ->
-                    activeAudioEngine = engine
-                    oboeAudioProcessor.currentEngine = engine
-                    onAudioEngineChange?.invoke(engine)
-                    saveSettings()
-                },
-                onDismiss = {
-                    showAudioEngineSheet = false
-                    saveSettings()
-                }
-            )
-        }
-
-        if (showGraphicsEngineSheet) {
-            GraphicsEngineSheet(
-                currentEngine = currentGraphicsEngine,
-                onEngineSelected = { engine ->
-                    currentGraphicsEngine = engine
-                    saveSettings()
-                },
-                onDismiss = {
-                    showGraphicsEngineSheet = false
-                    saveSettings()
-                }
-            )
-        }
-
-        if (showSubtitlesSheet) {
-            SubtitlesBottomSheet(
-                subtitlesEnabled = subtitlesEnabled,
-                availableTracks = availableTracks,
-                selectedTrackId = selectedTrackId,
-                externalSubtitle = externalSubtitle,
-                selectedSize = subtitleSize,
-                onToggleSubtitles = { enabled ->
-                    subtitlesEnabled = enabled
-                    exoPlayer.trackSelectionParameters = exoPlayer.trackSelectionParameters
-                        .buildUpon()
-                        .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, !enabled)
-                        .build()
-                },
-                onSelectTrack = { track ->
-                    selectedTrackId = track.id
-                    subtitlesEnabled = true
-                    if (!track.isExternal) {
-                        exoPlayer.trackSelectionParameters = exoPlayer.trackSelectionParameters
-                            .buildUpon()
-                            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
-                            .setPreferredTextLanguage(track.language)
-                            .build()
-                    }
-                },
-                onPickExternalSubtitle = { uri ->
-                    val fileName = SubtitleUtils.resolveSubtitleFileName(context, uri)
-                    val mimeType = SubtitleUtils.detectSubtitleMimeType(fileName)
-                    val fullAss = SubtitleUtils.loadFullAssTrackIfApplicable(context, uri, fileName)
-                    val assInfo = fullAss?.summary ?: SubtitleUtils.inspectAssMetadataIfApplicable(context, uri, fileName)
-                    val track = SubtitleTrackItem(
-                        id = "ext_${System.currentTimeMillis()}",
-                        label = fileName,
-                        mimeType = mimeType,
-                        isExternal = true,
-                        uri = uri,
-                        assInfo = assInfo,
-                        assStyles = fullAss?.styles ?: emptyList(),
-                        assDialogues = fullAss?.dialogues ?: emptyList()
-                    )
-                    externalSubtitle = track
-                    selectedTrackId = track.id
-                    subtitlesEnabled = true
-
-                    val subtitleConfig = MediaItem.SubtitleConfiguration.Builder(uri)
-                        .setMimeType(mimeType)
-                        .setLanguage("und")
-                        .setLabel(fileName)
-                        .setSelectionFlags(C.SELECTION_FLAG_DEFAULT)
-                        .build()
-
-                    val currentMediaItem = exoPlayer.currentMediaItem
-                    if (currentMediaItem != null) {
-                        val currentPos = exoPlayer.currentPosition
-                        val wasPlaying = exoPlayer.playWhenReady
-                        val updatedItem = currentMediaItem.buildUpon()
-                            .setSubtitleConfigurations(listOf(subtitleConfig))
-                            .build()
-                        exoPlayer.setMediaItem(updatedItem, currentPos)
-                        exoPlayer.prepare()
-                        exoPlayer.playWhenReady = wasPlaying
-                    }
-
+            },
+            activeAudioEngine = activeAudioEngine,
+            showAudioEngineSheet = showAudioEngineSheet,
+            onAudioEngineSelected = { engine ->
+                activeAudioEngine = engine
+                oboeAudioProcessor.currentEngine = engine
+                onAudioEngineChange?.invoke(engine)
+                saveSettings()
+            },
+            onDismissAudioEngineSheet = {
+                showAudioEngineSheet = false
+                saveSettings()
+            },
+            showStereoMonoSheet = showStereoMonoSheet,
+            audioChannelMode = audioChannelMode,
+            onAudioChannelModeSelected = { mode ->
+                audioChannelMode = mode
+                oboeAudioProcessor.channelMode = mode
+                OboeAudioEngine.setChannelMode(mode)
+                saveSettings()
+            },
+            onDismissStereoMonoSheet = {
+                showStereoMonoSheet = false
+                saveSettings()
+            },
+            showEqualizerSheet = showEqualizerSheet,
+            equalizerState = equalizerState,
+            onEqualizerStateChange = {
+                equalizerState = it
+                saveSettings()
+            },
+            onDismissEqualizerSheet = {
+                showEqualizerSheet = false
+                saveSettings()
+            },
+            showSunModeSheet = showSunModeSheet,
+            onDismissSunModeSheet = {
+                showSunModeSheet = false
+                saveSettings()
+            },
+            showPillarboxSheet = showPillarboxSheet,
+            onDismissPillarboxSheet = {
+                showPillarboxSheet = false
+                saveSettings()
+            },
+            showFsrSheet = showFsrSheet,
+            onDismissFsrSheet = {
+                showFsrSheet = false
+                saveSettings()
+            },
+            showAnime4kSheet = showAnime4kSheet,
+            onDismissAnime4kSheet = {
+                showAnime4kSheet = false
+                saveSettings()
+            },
+            showVoiceNightSheet = showVoiceNightSheet,
+            onSwitchToOboeForVoiceNight = {
+                activeAudioEngine = AudioEngineType.OBOE
+                oboeAudioProcessor.currentEngine = AudioEngineType.OBOE
+                onAudioEngineChange?.invoke(AudioEngineType.OBOE)
+                saveSettings()
+            },
+            onDismissVoiceNightSheet = {
+                showVoiceNightSheet = false
+                saveSettings()
+            },
+            showSpeedSheet = showSpeedSheet,
+            playbackSpeed = playbackSpeed,
+            onSpeedSelected = { newSpeed ->
+                playbackSpeed = newSpeed
+                exoPlayer.playbackParameters = PlaybackParameters(newSpeed, 1.0f)
+                saveSettings()
+            },
+            onDismissSpeedSheet = {
+                showSpeedSheet = false
+                saveSettings()
+            },
+            showAspectRatioSheet = showAspectRatioSheet,
+            currentAspectMode = currentAspectMode,
+            onAspectRatioSelected = {
+                currentAspectMode = it
+                saveSettings()
+            },
+            onDismissAspectRatioSheet = {
+                showAspectRatioSheet = false
+                saveSettings()
+            },
+            showGraphicsEngineSheet = showGraphicsEngineSheet,
+            currentGraphicsEngine = currentGraphicsEngine,
+            onGraphicsEngineSelected = { engine ->
+                currentGraphicsEngine = engine
+                saveSettings()
+            },
+            onDismissGraphicsEngineSheet = {
+                showGraphicsEngineSheet = false
+                saveSettings()
+            },
+            showSubtitlesSheet = showSubtitlesSheet,
+            subtitlesEnabled = subtitlesEnabled,
+            availableTracks = availableTracks,
+            selectedTrackId = selectedTrackId,
+            externalSubtitle = externalSubtitle,
+            subtitleSize = subtitleSize,
+            onToggleSubtitles = { enabled ->
+                subtitlesEnabled = enabled
+                exoPlayer.trackSelectionParameters = exoPlayer.trackSelectionParameters
+                    .buildUpon()
+                    .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, !enabled)
+                    .build()
+            },
+            onSelectSubtitleTrack = { track ->
+                selectedTrackId = track.id
+                subtitlesEnabled = true
+                if (!track.isExternal) {
                     exoPlayer.trackSelectionParameters = exoPlayer.trackSelectionParameters
                         .buildUpon()
                         .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+                        .setPreferredTextLanguage(track.language)
                         .build()
-
-                    saveSettings()
-                },
-                onRemoveExternalSubtitle = {
-                    externalSubtitle = null
-                    val currentMediaItem = exoPlayer.currentMediaItem
-                    if (currentMediaItem != null) {
-                        val currentPos = exoPlayer.currentPosition
-                        val wasPlaying = exoPlayer.playWhenReady
-                        val updatedItem = currentMediaItem.buildUpon()
-                            .setSubtitleConfigurations(emptyList())
-                            .build()
-                        exoPlayer.setMediaItem(updatedItem, currentPos)
-                        exoPlayer.prepare()
-                        exoPlayer.playWhenReady = wasPlaying
-                    }
-                    saveSettings()
-                },
-                onSizeChanged = { newSize ->
-                    subtitleSize = newSize
-                    saveSettings()
-                },
-                onDismiss = {
-                    showSubtitlesSheet = false
-                    saveSettings()
                 }
-            )
-        }
+            },
+            onPickExternalSubtitle = { uri ->
+                val fileName = SubtitleUtils.resolveSubtitleFileName(context, uri)
+                val mimeType = SubtitleUtils.detectSubtitleMimeType(fileName)
+                val fullAss = SubtitleUtils.loadFullAssTrackIfApplicable(context, uri, fileName)
+                val assInfo = fullAss?.summary ?: SubtitleUtils.inspectAssMetadataIfApplicable(context, uri, fileName)
+                val track = SubtitleTrackItem(
+                    id = "ext_${System.currentTimeMillis()}",
+                    label = fileName,
+                    mimeType = mimeType,
+                    isExternal = true,
+                    uri = uri,
+                    assInfo = assInfo,
+                    assStyles = fullAss?.styles ?: emptyList(),
+                    assDialogues = fullAss?.dialogues ?: emptyList()
+                )
+                externalSubtitle = track
+                selectedTrackId = track.id
+                subtitlesEnabled = true
+
+                val subtitleConfig = MediaItem.SubtitleConfiguration.Builder(uri)
+                    .setMimeType(mimeType)
+                    .setLanguage("und")
+                    .setLabel(fileName)
+                    .setSelectionFlags(C.SELECTION_FLAG_DEFAULT)
+                    .build()
+
+                val currentMediaItem = exoPlayer.currentMediaItem
+                if (currentMediaItem != null) {
+                    val currentPos = exoPlayer.currentPosition
+                    val wasPlaying = exoPlayer.playWhenReady
+                    val updatedItem = currentMediaItem.buildUpon()
+                        .setSubtitleConfigurations(listOf(subtitleConfig))
+                        .build()
+                    exoPlayer.setMediaItem(updatedItem, currentPos)
+                    exoPlayer.prepare()
+                    exoPlayer.playWhenReady = wasPlaying
+                }
+
+                exoPlayer.trackSelectionParameters = exoPlayer.trackSelectionParameters
+                    .buildUpon()
+                    .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+                    .build()
+
+                saveSettings()
+            },
+            onRemoveExternalSubtitle = {
+                externalSubtitle = null
+                val currentMediaItem = exoPlayer.currentMediaItem
+                if (currentMediaItem != null) {
+                    val currentPos = exoPlayer.currentPosition
+                    val wasPlaying = exoPlayer.playWhenReady
+                    val updatedItem = currentMediaItem.buildUpon()
+                        .setSubtitleConfigurations(emptyList())
+                        .build()
+                    exoPlayer.setMediaItem(updatedItem, currentPos)
+                    exoPlayer.prepare()
+                    exoPlayer.playWhenReady = wasPlaying
+                }
+                saveSettings()
+            },
+            onSubtitleSizeChanged = { newSize ->
+                subtitleSize = newSize
+                saveSettings()
+            },
+            onDismissSubtitlesSheet = {
+                showSubtitlesSheet = false
+                saveSettings()
+            },
+            showZoomSheet = showZoomSheet,
+            zoomScale = zoomScale,
+            onZoomSelected = { newScale ->
+                onPlayClickSound()
+                zoomScale = newScale
+                val maxPanX = (containerWidth.toFloat().takeIf { it > 0 } ?: 1000f) * (newScale - 1f) / 2f
+                val maxPanY = (containerHeight.toFloat().takeIf { it > 0 } ?: 1000f) * (newScale - 1f) / 2f
+                panOffsetX = panOffsetX.coerceIn(-maxPanX, maxPanX)
+                panOffsetY = panOffsetY.coerceIn(-maxPanY, maxPanY)
+                showZoomHud = true
+                zoomHudHideJob?.cancel()
+                zoomHudHideJob = coroutineScope.launch {
+                    delay(2000)
+                    showZoomHud = false
+                }
+            },
+            onResetZoom = {
+                onPlayClickSound()
+                zoomScale = 1.0f
+                panOffsetX = 0f
+                panOffsetY = 0f
+                showZoomHud = true
+                zoomHudHideJob?.cancel()
+                zoomHudHideJob = coroutineScope.launch {
+                    delay(1200)
+                    showZoomHud = false
+                }
+            },
+            onDismissZoomSheet = {
+                showZoomSheet = false
+            }
+        )
 
         // Mensaje de Error Amigable
         playbackErrorMessage?.let { errorMsg ->

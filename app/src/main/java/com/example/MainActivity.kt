@@ -248,6 +248,10 @@ fun MainVideoApp(
                         initialThemeMode = currentThemeMode,
                         initialDynamicColor = useDynamicColor,
                         initialScanMessaging = scanMessagingApps,
+                        onLiveThemeChanged = { themeMode, dynamicColor ->
+                            viewModel.setAppThemeMode(themeMode)
+                            viewModel.setDynamicColor(dynamicColor)
+                        },
                         onComplete = { audioEngine, graphicsEngine, themeMode, dynamicColor, scanMessaging ->
                             viewModel.playClickSound()
                             viewModel.completeOnboarding(
@@ -288,6 +292,9 @@ fun MainVideoApp(
                         onNavigateBack = {
                             viewModel.playClickSound()
                             currentScreen = previousScreen
+                        },
+                        onPlayClickSound = {
+                            viewModel.playClickSound()
                         },
                         modifier = Modifier
                             .fillMaxSize()

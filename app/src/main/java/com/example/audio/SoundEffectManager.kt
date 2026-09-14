@@ -2,6 +2,7 @@ package com.example.audio
 
 import android.content.Context
 import android.media.AudioAttributes
+import android.media.AudioManager
 import android.media.SoundPool
 import android.util.Log
 import com.example.R
@@ -13,8 +14,12 @@ import com.example.data.AppPreferences
  * Arquitectura y funcionamiento:
  * - Utiliza [SoundPool] de Android para precargar micro-efectos sonoros en memoria RAM y reproducirlos
  *   con latencia cercana a 0 ms sin interferir con la pista de audio principal del reproductor de video.
- * - Carga el recurso comprimido en formato Ogg Vorbis [R.raw.ui_click] a 48 kHz (generado mediante
- *   el script `scripts/convert_audio_asset.sh`).
+ * - Configurado con [AudioAttributes.USAGE_MEDIA] y [AudioAttributes.CONTENT_TYPE_SONIFICATION]
+ *   para garantizar su reproducción a través del canal multimedia (STREAM_MUSIC), evitando que
+ *   el audio sea silenciado por la configuración global del sistema de "sonidos táctiles" o el modo vibración.
+ * - Carga el recurso [R.raw.ui_click] a 48 kHz mono con duración calibrada de 42 ms.
+ * - Cuenta con un mecanismo de respaldo automático (fallback) mediante [AudioManager.playSoundEffect]
+ *   en caso de que SoundPool aún se encuentre cargando o falle la asignación de canales.
  * - Respeta de forma estricta la preferencia [AppPreferences.isSoundEffectsEnabled] para silenciarse
  *   automáticamente cuando el usuario prefiera una experiencia visual silenciosa.
  */
@@ -22,19 +27,23 @@ class SoundEffectManager private constructor(context: Context) {
 
     private val appContext = context.applicationContext
     private val preferences = AppPreferences.getInstance(appContext)
+    private val audioManager = appContext.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
 
     private val soundPool: SoundPool
     private var clickSoundId: Int = 0
+    @Volatile
     private var isLoaded: Boolean = false
 
     init {
+        // Enrutamiento directo al flujo multimedia (STREAM_MUSIC) para que la respuesta auditiva sea
+        // audible e inmune a las restricciones de "sonidos del sistema" de Android.
         val audioAttributes = AudioAttributes.Builder()
-            .setUsage(AudioAttributes.USAGE_ASSISTANCE_SONIFICATION)
+            .setUsage(AudioAttributes.USAGE_MEDIA)
             .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
             .build()
 
         soundPool = SoundPool.Builder()
-            .setMaxStreams(4)
+            .setMaxStreams(8)
             .setAudioAttributes(audioAttributes)
             .build()
 
@@ -44,7 +53,7 @@ class SoundEffectManager private constructor(context: Context) {
                     isLoaded = true
                 }
             } else {
-                Log.w("SoundEffectManager", "Error al cargar sonido en SoundPool: estado $status")
+                Log.w("SoundEffectManager", "Aviso en carga de SoundPool: estado $status")
             }
         }
 
@@ -56,9 +65,19 @@ class SoundEffectManager private constructor(context: Context) {
      */
     private fun loadSounds() {
         try {
-            clickSoundId = soundPool.load(appContext, R.raw.ui_click, 1)
+            val afd = appContext.resources.openRawResourceFd(R.raw.ui_click)
+            if (afd != null) {
+                clickSoundId = soundPool.load(afd, 1)
+                afd.close()
+            } else {
+                clickSoundId = soundPool.load(appContext, R.raw.ui_click, 1)
+            }
         } catch (e: Throwable) {
-            Log.w("SoundEffectManager", "No se pudo cargar R.raw.ui_click: ${e.message}")
+            try {
+                clickSoundId = soundPool.load(appContext, R.raw.ui_click, 1)
+            } catch (ex: Throwable) {
+                Log.w("SoundEffectManager", "Fallo al precargar audio en SoundPool: ${ex.message}")
+            }
         }
     }
 
@@ -66,19 +85,30 @@ class SoundEffectManager private constructor(context: Context) {
      * Reproduce el sonido de click táctil si los efectos de sonido están habilitados por el usuario.
      *
      * @param volume Volumen relativo del sonido (0.0f a 1.0f).
-     * @param pitch Tono/velocidad del sonido (1.0f es tono original, 1.05f ligeramente más agudo).
+     * @param pitch Tono/velocidad del sonido (1.0f es tono original).
      */
-    fun playClickSound(volume: Float = 0.7f, pitch: Float = 1.0f) {
+    fun playClickSound(volume: Float = 0.85f, pitch: Float = 1.0f) {
         if (!preferences.isSoundEffectsEnabled) {
             return
         }
 
+        var playedSuccessfully = false
         if (isLoaded && clickSoundId != 0) {
             try {
-                soundPool.play(clickSoundId, volume, volume, 1, 0, pitch)
+                val streamId = soundPool.play(clickSoundId, volume, volume, 1, 0, pitch)
+                if (streamId != 0) {
+                    playedSuccessfully = true
+                }
             } catch (e: Throwable) {
-                Log.w("SoundEffectManager", "Fallo al reproducir click de sonido: ${e.message}")
+                Log.w("SoundEffectManager", "Excepción al reproducir en SoundPool: ${e.message}")
             }
+        }
+
+        // Si SoundPool aún no terminó de cargar o no pudo asignar canal nativo, fallback a AudioManager
+        if (!playedSuccessfully) {
+            try {
+                audioManager?.playSoundEffect(AudioManager.FX_KEY_CLICK, volume)
+            } catch (_: Throwable) {}
         }
     }
 

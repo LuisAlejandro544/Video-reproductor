@@ -58,38 +58,36 @@ fun MessagingScanStep(
 
         // Opción 1: Escanear WhatsApp y Telegram
         SelectionCardWithProsCons(
-            title = "Escanear Mensajería (WhatsApp y Telegram)",
-            badgeText = "Detección Automática",
+            title = "Escanear Mensajería",
+            badgeText = "WhatsApp y Telegram",
             badgeColor = Color(0xFF10B981),
             icon = Icons.Default.QuestionAnswer,
             isSelected = scanMessagingApps,
             onSelect = { onScanMessagingChanged(true) },
             advantages = listOf(
-                "Tus videos recibidos en WhatsApp y Telegram aparecen al instante en la biblioteca.",
-                "Te ahorra tener que navegar manualmente por carpetas profundas del almacenamiento.",
-                "Actualización rápida de nuevos videos con un solo toque."
+                "Detecta automáticamente videos recibidos en WhatsApp y Telegram.",
+                "Acceso directo en la biblioteca sin buscar en carpetas profundas."
             ),
             disadvantages = listOf(
-                "Pueden aparecer videos cortos, notas o memes de grupos si no se filtran."
+                "Pueden incluirse notas o videos de grupos si no se filtran."
             ),
             testTag = "onboarding_scan_messaging_enabled"
         )
 
         // Opción 2: Solo Importar (Modo Privado)
         SelectionCardWithProsCons(
-            title = "Solo Importar (Modo Privado)",
-            badgeText = "Máxima Privacidad",
+            title = "Modo Privado",
+            badgeText = "Solo Importar",
             badgeColor = Color(0xFF6366F1),
             icon = Icons.Default.Lock,
             isSelected = !scanMessagingApps,
             onSelect = { onScanMessagingChanged(false) },
             advantages = listOf(
-                "100% de privacidad: la app no lee ni analiza ninguna carpeta de mensajería.",
-                "Tu biblioteca contendrá única y exclusivamente los videos que tú decidas abrir o importar.",
-                "Cero consumo de batería o almacenamiento por tareas de escaneo en segundo plano."
+                "100% de privacidad: la app no lee ninguna carpeta de mensajería.",
+                "Solo verás los videos que tú decidas abrir o importar manualmente."
             ),
             disadvantages = listOf(
-                "Deberás abrir los videos recibidos manualmente mediante el gestor de archivos o la galería."
+                "Los videos recibidos deben abrirse desde la galería o gestor de archivos."
             ),
             testTag = "onboarding_scan_messaging_disabled"
         )

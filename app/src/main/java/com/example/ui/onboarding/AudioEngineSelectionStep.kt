@@ -57,38 +57,36 @@ fun AudioEngineSelectionStep(
 
         // Opción 1: Android Media3 (AudioTrack estándar)
         SelectionCardWithProsCons(
-            title = "Android Media3 (AudioTrack)",
+            title = "Android Media3",
             badgeText = "Recomendado para Bluetooth",
             badgeColor = Color(0xFF38BDF8),
             icon = Icons.Default.Headphones,
             isSelected = selectedEngine == AudioEngineType.MEDIA3,
             onSelect = { onEngineSelected(AudioEngineType.MEDIA3) },
             advantages = listOf(
-                "Máxima compatibilidad con todos los modelos de teléfonos Android.",
-                "Sincronización A/V automática ideal para auriculares inalámbricos Bluetooth.",
-                "Consumo de batería sumamente bajo y estabilidad comprobada."
+                "Compatibilidad universal y óptima sincronización A/V en Bluetooth.",
+                "Consumo de batería mínimo con el búfer estándar del sistema."
             ),
             disadvantages = listOf(
-                "Mayor latencia de respuesta en el búfer acústico del sistema operativo."
+                "Mayor latencia de respuesta en el búfer acústico del sistema."
             ),
             testTag = "onboarding_select_media3"
         )
 
         // Opción 2: Google Oboe C++ (Nativo)
         SelectionCardWithProsCons(
-            title = "Google Oboe (Nativo C++)",
+            title = "Google Oboe C++",
             badgeText = "Ultra Baja Latencia",
             badgeColor = MaterialTheme.colorScheme.primary,
             icon = Icons.Default.Equalizer,
             isSelected = selectedEngine == AudioEngineType.OBOE,
             onSelect = { onEngineSelected(AudioEngineType.OBOE) },
             advantages = listOf(
-                "Latencia prácticamente nula (0 ms) mediante acceso directo por hardware con AAudio / OpenSL ES.",
-                "Aceleración SIMD NEON de 32 y 64 bits para filtros y compresión de rango dinámico.",
-                "Procesamiento directo a nivel de muestra sin pasar por la capa intermedia de Java/Kotlin."
+                "Latencia prácticamente nula mediante acceso directo por hardware C++.",
+                "Procesamiento PCM flotante de 32 bits y aceleración SIMD NEON."
             ),
             disadvantages = listOf(
-                "En algunos auriculares Bluetooth muy específicos con códecs propietarios puede requerir ajuste de retardo."
+                "En algunos audífonos Bluetooth propietarios puede requerir calibración."
             ),
             testTag = "onboarding_select_oboe"
         )

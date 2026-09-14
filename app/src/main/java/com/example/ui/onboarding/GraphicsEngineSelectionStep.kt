@@ -102,40 +102,38 @@ fun GraphicsEngineSelectionStep(
 
             // Opción 1: OpenGL ES 3.0+
             SelectionCardWithProsCons(
-                title = "OpenGL ES 3.0+ (Recomendado)",
+                title = "OpenGL ES 3.0+",
                 badgeText = "Estable y Probado",
                 badgeColor = Color(0xFF10B981),
                 icon = Icons.Default.VideogameAsset,
                 isSelected = selectedEngine == GraphicsEngineType.OPENGL_ES,
                 onSelect = { onEngineSelected(GraphicsEngineType.OPENGL_ES) },
                 advantages = listOf(
-                    "Madurez absoluta y 100% de compatibilidad con todos los chips gráficos móviles.",
-                    "Soporte total y pulido para todos los shaders avanzados: Sun Mode, FSR, Anime4K y Desenfoque Pillarbox.",
-                    "Cero errores de renderizado o parpadeos en pantalla."
+                    "Compatibilidad absoluta con el 100% de dispositivos Android.",
+                    "Soporte total de shaders: Sun Mode, FSR, Anime4K y Pillarbox."
                 ),
                 disadvantages = listOf(
-                    "Mayor sobrecarga (overhead) en el procesador principal (CPU) para despachar comandos gráficos."
+                    "Mayor sobrecarga (overhead) en la CPU para despachar comandos gráficos."
                 ),
                 testTag = "onboarding_select_opengles"
             )
 
             // Opción 2: Vulkan 1.1+ (Bajo Nivel)
             SelectionCardWithProsCons(
-                title = "Vulkan 1.1+ (Bajo Nivel)",
+                title = "Vulkan 1.1+",
                 badgeText = "En Desarrollo",
                 badgeColor = Color(0xFFF59E0B),
                 icon = Icons.Default.Speed,
                 isSelected = selectedEngine == GraphicsEngineType.VULKAN,
                 onSelect = { onEngineSelected(GraphicsEngineType.VULKAN) },
                 advantages = listOf(
-                    "Acceso directo y sin intermediarios al silicio de la GPU.",
-                    "Menor consumo de CPU y menor gasto de batería durante reproducción continua.",
-                    "Pipelines precompilados de alta velocidad de despacho de fotogramas."
+                    "Acceso directo al silicio GPU con menor consumo de CPU y batería.",
+                    "Pipelines gráficos precompilados de alta velocidad de fotogramas."
                 ),
                 disadvantages = listOf(
-                    "Comportamiento dependiente de la calidad del controlador del fabricante del dispositivo."
+                    "Comportamiento dependiente del controlador Vulkan del fabricante."
                 ),
-                warningNote = "Aviso: El motor Vulkan aún sigue en desarrollo activo en cuanto a funciones completas y filtros de video en esta versión de la app.",
+                warningNote = "Aviso: El motor Vulkan está en desarrollo experimental en esta versión.",
                 testTag = "onboarding_select_vulkan"
             )
         } else {

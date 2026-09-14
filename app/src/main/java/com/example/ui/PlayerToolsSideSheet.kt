@@ -41,6 +41,7 @@ import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Subtitles
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.WbSunny
+import androidx.compose.material.icons.filled.ZoomIn
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -77,7 +78,8 @@ enum class PlayerToolItem {
     AUDIO_ENGINE,
     GRAPHICS_ENGINE,
     SUBTITLES,
-    ASPECT_RATIO
+    ASPECT_RATIO,
+    ZOOM
 }
 
 /**
@@ -343,6 +345,18 @@ fun PlayerToolsSideSheet(
                             onClick = {
                                 onDismiss()
                                 onSelectTool(PlayerToolItem.ASPECT_RATIO)
+                            }
+                        )
+
+                        // 11. Zoom táctil (hasta x10)
+                        ToolMenuItem(
+                            icon = Icons.Default.ZoomIn,
+                            label = "Zoom táctil (hasta x10)",
+                            description = "Pellizco táctil, presets y ajuste fino",
+                            testTag = "tool_item_zoom",
+                            onClick = {
+                                onDismiss()
+                                onSelectTool(PlayerToolItem.ZOOM)
                             }
                         )
                     }

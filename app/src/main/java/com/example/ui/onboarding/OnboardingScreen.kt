@@ -57,6 +57,7 @@ import androidx.core.content.ContextCompat
 import com.example.audio.AudioEngineType
 import com.example.model.GraphicsEngineType
 import com.example.ui.theme.AppThemeMode
+import com.example.ui.theme.MyApplicationTheme
 import com.example.utils.MessagingMediaScanner
 import com.example.vulkan.VulkanCapabilities
 
@@ -78,6 +79,7 @@ fun OnboardingScreen(
     initialThemeMode: AppThemeMode = AppThemeMode.SYSTEM,
     initialDynamicColor: Boolean = true,
     initialScanMessaging: Boolean = false,
+    onLiveThemeChanged: ((AppThemeMode, Boolean) -> Unit)? = null,
     onComplete: (
         audioEngine: AudioEngineType,
         graphicsEngine: GraphicsEngineType,
@@ -92,6 +94,11 @@ fun OnboardingScreen(
 
     // Estado del paso actual (1 al 6)
     var currentStep by remember { mutableStateOf(OnboardingStep.WELCOME_PERMISSIONS) }
+
+    // Reinicia automáticamente la posición del scroll al inicio de cada paso para evitar desalineaciones o tarjetas estiradas
+    LaunchedEffect(currentStep) {
+        scrollState.scrollTo(0)
+    }
 
     // Estados de configuración elegidos por el usuario
     var selectedAudioEngine by remember { mutableStateOf(initialAudioEngine) }
@@ -129,10 +136,15 @@ fun OnboardingScreen(
         }
     }
 
-    Surface(
-        modifier = modifier.fillMaxSize(),
-        color = MaterialTheme.colorScheme.background
+    // El asistente reacciona dinámicamente en tiempo real a los cambios de tema y Material You seleccionados
+    MyApplicationTheme(
+        themeMode = selectedThemeMode,
+        dynamicColor = useDynamicColor
     ) {
+        Surface(
+            modifier = modifier.fillMaxSize(),
+            color = MaterialTheme.colorScheme.background
+        ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -192,8 +204,14 @@ fun OnboardingScreen(
                             ThemeSelectionStep(
                                 selectedThemeMode = selectedThemeMode,
                                 useDynamicColor = useDynamicColor,
-                                onThemeModeSelected = { selectedThemeMode = it },
-                                onDynamicColorChanged = { useDynamicColor = it }
+                                onThemeModeSelected = { newMode ->
+                                    selectedThemeMode = newMode
+                                    onLiveThemeChanged?.invoke(newMode, useDynamicColor)
+                                },
+                                onDynamicColorChanged = { newDynamic ->
+                                    useDynamicColor = newDynamic
+                                    onLiveThemeChanged?.invoke(selectedThemeMode, newDynamic)
+                                }
                             )
                         }
                         OnboardingStep.MESSAGING_SCAN -> {
@@ -306,4 +324,5 @@ fun OnboardingScreen(
             }
         }
     }
+}
 }

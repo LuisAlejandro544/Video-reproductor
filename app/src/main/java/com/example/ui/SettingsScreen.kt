@@ -62,6 +62,7 @@ fun SettingsScreen(
     isSoundEffectsEnabled: Boolean = true,
     onSoundEffectsToggled: (Boolean) -> Unit = {},
     onNavigateBack: () -> Unit,
+    onPlayClickSound: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var activeSubScreen by remember { mutableStateOf(SettingsSubScreen.HUB) }
@@ -125,7 +126,10 @@ fun SettingsScreen(
                     sampleRate = sampleRate,
                     currentThemeMode = currentThemeMode,
                     useDynamicColor = useDynamicColor,
-                    onNavigateTo = { activeSubScreen = it },
+                    onNavigateTo = {
+                        onPlayClickSound()
+                        activeSubScreen = it
+                    },
                     onNavigateBack = {
                         AudioTestManager.stopTone(activeTestTrack)
                         onNavigateBack()
@@ -140,7 +144,10 @@ fun SettingsScreen(
                     onDynamicColorToggled = onDynamicColorChanged,
                     isSoundEffectsEnabled = isSoundEffectsEnabled,
                     onSoundEffectsToggled = onSoundEffectsToggled,
-                    onBack = { activeSubScreen = SettingsSubScreen.HUB }
+                    onBack = {
+                        onPlayClickSound()
+                        activeSubScreen = SettingsSubScreen.HUB
+                    }
                 )
             }
             SettingsSubScreen.AUDIO_ENGINE -> {
@@ -155,17 +162,24 @@ fun SettingsScreen(
                             OboeAudioEngine.stop()
                         }
                     },
-                    onBack = { activeSubScreen = SettingsSubScreen.HUB }
+                    onBack = {
+                        onPlayClickSound()
+                        activeSubScreen = SettingsSubScreen.HUB
+                    }
                 )
             }
             SettingsSubScreen.AUDIO_CHANNELS -> {
                 AudioChannelsSubScreen(
                     currentMode = currentChannelMode,
                     onModeSelected = { mode ->
+                        onPlayClickSound()
                         currentChannelMode = mode
                         OboeAudioEngine.setChannelMode(mode)
                     },
-                    onBack = { activeSubScreen = SettingsSubScreen.HUB }
+                    onBack = {
+                        onPlayClickSound()
+                        activeSubScreen = SettingsSubScreen.HUB
+                    }
                 )
             }
             SettingsSubScreen.AUDIO_TEST -> {
@@ -174,6 +188,7 @@ fun SettingsScreen(
                     isTestingAudio = isTestingAudio,
                     testAudioMessage = testAudioMessage,
                     onToggleTest = {
+                        onPlayClickSound()
                         if (isTestingAudio) {
                             AudioTestManager.stopTone(activeTestTrack)
                             isTestingAudio = false
@@ -196,6 +211,7 @@ fun SettingsScreen(
                         }
                     },
                     onBack = {
+                        onPlayClickSound()
                         AudioTestManager.stopTone(activeTestTrack)
                         isTestingAudio = false
                         activeSubScreen = SettingsSubScreen.HUB
@@ -210,17 +226,26 @@ fun SettingsScreen(
                     channelCount = channelCount,
                     framesWritten = framesWritten,
                     memoryProfile = memoryProfile,
-                    onBack = { activeSubScreen = SettingsSubScreen.HUB }
+                    onBack = {
+                        onPlayClickSound()
+                        activeSubScreen = SettingsSubScreen.HUB
+                    }
                 )
             }
             SettingsSubScreen.ABOUT -> {
                 AboutSubScreen(
-                    onBack = { activeSubScreen = SettingsSubScreen.HUB }
+                    onBack = {
+                        onPlayClickSound()
+                        activeSubScreen = SettingsSubScreen.HUB
+                    }
                 )
             }
             SettingsSubScreen.FORMATS -> {
                 FormatsSubScreen(
-                    onBack = { activeSubScreen = SettingsSubScreen.HUB }
+                    onBack = {
+                        onPlayClickSound()
+                        activeSubScreen = SettingsSubScreen.HUB
+                    }
                 )
             }
         }

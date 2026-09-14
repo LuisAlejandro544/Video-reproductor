@@ -12,11 +12,13 @@
 
 ## ✨ Características Principales
 
-- **Efectos de Sonido de Interfaz Táctil (UI Clicks con SoundPool de Ultra Baja Latencia):**
-  - **Retroalimentación Acústica Nítida:** Respuesta auditiva inmediata al interactuar con botones de navegación, controles de reproducción, selección de videos e indicadores gestuales.
-  - **Motor Nativo SoundPool a 48 kHz:** Carga asíncrona en memoria y reproducción simultánea con 0 ms de sobrecarga de hilo principal, optimizado en formato Ogg Vorbis (`ui_click.ogg`).
+- **Efectos de Sonido de Interfaz Táctil (UI Clicks con SoundPool de Ultra Baja Latencia y Doble Capa):**
+  - **Retroalimentación Acústica Nítida y Universal:** Respuesta auditiva inmediata en botones de control, navegación de subpantallas de ajustes, panel lateral de herramientas, selección de videos e indicadores gestuales.
+  - **Enrutamiento por Flujo Multimedia (`STREAM_MUSIC`):** Configurado con `AudioAttributes.USAGE_MEDIA` para garantizar audición nítida sin depender de los ajustes restrictivos de "sonidos del sistema" de Android ni silenciarse con el modo vibración.
+  - **Muestra Acústica Calibrada (`ui_click.ogg` a 48 kHz mono):** Duración acústica ajustada a 42 ms con ataque suave anti-pop, chasquido a 2.4 kHz y cuerpo a 520 Hz, evitando ruidos espurios y garantizando decodificación Vorbis perfecta sin truncamiento por encendido de DAC.
+  - **Degradación Elegante (Dual-Tier Fallback):** Respaldo automático mediante `AudioManager.playSoundEffect` para evitar pulsaciones mudas durante la precarga o saturación de canales.
   - **Ajuste y Control en Pantalla:** Interruptor en *Configuración > Apariencia* para activar o desactivar los efectos sonoros en cualquier momento, con persistencia en `AppPreferences`.
-  - **Herramienta de Optimización de Audio (`scripts/convert_audio_asset.sh`):** Script automatizado para convertir cualquier muestra de audio (WAV/MP3/FLAC) a Ogg Vorbis mono optimizado para móviles de bajos recursos.
+  - **Herramienta de Optimización de Audio (`scripts/convert_audio_asset.sh`):** Script automatizado para convertir cualquier muestra de audio (WAV/MP3/FLAC) a Ogg Vorbis mono optimizado para móviles de recursos limitados.
 - **Indicadores Gestuales Dinámicos y Transiciones Cinemáticas entre Pantallas:**
   - **Indicadores HUD Reactivos (`PlayerHudIndicators`):** Interpolación suave con físicas de resorte (`spring`) en los medidores flotantes de volumen y brillo, expansión adaptativa de cápsula y resplandor cromático según el nivel.
   - **Animación Elástica de Doble Toque (+5s / -5s):** Pulso con rebote dinámico y resplandor para confirmar el salto temporal en reproducción.
@@ -141,6 +143,7 @@
     - **Super-Resolución AMD FSR 1.0 (`FsrUpscaleSheet`):** Pantalla dedicada para activar el escalado espacial adaptativo (EASU) y regular la nitidez dependiente del contraste (RCAS).
     - **Compresor Dinámico y Voces Claras (`VoiceNightAudioSheet`):** Pantalla dedicada para realce de diálogos y compresión de rango dinámico para cine nocturno en DSP C++. Cuenta con candado visual y bloqueo preventivo si se utiliza Media3, ofreciendo un botón de desbloqueo instantáneo hacia Google Oboe C++.
     - **Relación de Aspecto (`AspectRatioSheet`):** Selector independiente de proporción geométrica (*Ajustar*, *Zoom*, *Llenar*).
+    - **Zoom Táctil Continuo (`ZoomBottomSheet`):** Panel exclusivo para regular la ampliación continua de 1.0x a 10.0x con deslizador de precisión y presets rápidos (1.0x, 1.5x, 2.0x, 3.0x, 5.0x y 10.0x).
     - **Motor de Audio (`AudioEngineSheet`):** Selector independiente entre Google Oboe nativo en C++ y Android Media3.
     - **Velocidad de Reproducción (`PlaybackSpeedSheet`):** Panel dedicado de velocidad con *Sonic Pitch Preservation*.
     - **Gestor de Subtítulos (`SubtitlesBottomSheet`):** Configuración de subtítulos internos y externos con ajuste de escala tipográfica.
@@ -158,6 +161,11 @@
   - **Google Oboe (Nativo C++):** Motor de ultra baja latencia que interactúa directamente con **AAudio** en Android 8.0+ y realiza fallback automático a **OpenSL ES** en hardware heredado. Elimina microcortes y asegura procesamiento directo a nivel de muestra.
   - **Persistencia en Disco (`AppPreferences`):** La preferencia de motor de audio elegida se guarda automáticamente y se preserva de forma permanente entre reinicios de la aplicación.
 - **Gestos Táctiles Avanzados y Control Rápido:**
+  - **Pellizcar para Zoom Continuo (Pinch-to-Zoom hasta x10):**
+    - **Ampliación Multitáctil Fluida (1.0x a 10.0x):** Gesto intuitivo con dos dedos para ampliar cualquier parte de la escena hasta diez veces su escala original de forma continua.
+    - **Desplazamiento Panorámico (Pan):** Con el zoom activo (>1.0x), deslizar con uno o dos dedos permite recorrer toda la imagen con encuadre delimitado por los bordes reales.
+    - **Restablecimiento Rápido con Doble Toque:** Si la imagen está ampliada, pulsar dos veces con un dedo restablece de inmediato la escala a 1.0x con respuesta háptica.
+    - **Indicador HUD Reactivo (`ZoomHudIndicator`):** Píldora translúcida superior con animación elástica que indica el factor exacto de aumento y ofrece un botón de reinicio directo.
   - **Salto Rápido por Doble Toque (Doble Click a los Laterales):**
     - **Doble toque en el lado izquierdo:** Atrasa el video **5 segundos** (-5s).
     - **Doble toque en el lado derecho:** Adelanta el video **5 segundos** (+5s).

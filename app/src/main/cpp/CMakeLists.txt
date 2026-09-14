@@ -28,6 +28,9 @@ add_library(
     native-lib.cpp
     OboeAudioEngine.cpp
     VideoColorEngine.cpp
+    vulkan/VulkanDeviceContext.cpp
+    vulkan/VulkanSwapchainManager.cpp
+    vulkan/VulkanPipelineManager.cpp
     vulkan/VulkanVideoEngine.cpp
 )
 

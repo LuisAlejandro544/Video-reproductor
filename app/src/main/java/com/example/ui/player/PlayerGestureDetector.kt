@@ -19,10 +19,12 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.changedToUp
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
 import kotlin.math.abs
+import kotlin.math.hypot
 import kotlin.math.roundToInt
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -32,10 +34,13 @@ import kotlinx.coroutines.launch
  * PlayerGestureDetector.kt - Detección y gestión de gestos sobre el lienzo de video.
  *
  * Soporta de manera fluida y concurrente:
- * 1. Toque simple (Single Tap): Muestra / oculta la interfaz de controles superpuesta.
- * 2. Doble toque (Double Tap): Adelanta (+5s) o retrocede (-5s) según el lado de la pantalla pulsado.
- * 3. Pulsación prolongada (Long Press): Activa avance rápido a 2X en el lateral derecho mientras se mantenga presionado.
- * 4. Deslizamiento vertical (Vertical Drag):
+ * 1. Pellizcar para Zoom (Pinch-to-Zoom): Ampliación táctil fluida con dos dedos desde 1.0x hasta 10.0x.
+ * 2. Desplazamiento panorámico (Pan): Con el zoom activo (>1.0x), deslizar con uno o dos dedos para explorar la imagen.
+ * 3. Restablecimiento rápido de Zoom: Doble toque sobre video ampliado para volver a escala original (1.0x).
+ * 4. Toque simple (Single Tap): Muestra / oculta la interfaz de controles superpuesta.
+ * 5. Doble toque (Double Tap): Adelanta (+5s) o retrocede (-5s) en escala 1.0x según el lado de la pantalla pulsado.
+ * 6. Pulsación prolongada (Long Press): Activa avance rápido a 2X en el lateral derecho mientras se mantenga presionado.
+ * 7. Deslizamiento vertical (Vertical Drag):
  *    - Mitad izquierda: Ajuste fino de brillo de pantalla en la ventana activa.
  *    - Mitad derecha: Ajuste de volumen multimedia del dispositivo con retroalimentación HUD.
  */
@@ -57,6 +62,11 @@ fun PlayerGestureSurface(
     onStopFastForward2x: () -> Unit,
     onShowGestureIndicator: (type: GestureIndicatorType) -> Unit,
     onHideGestureIndicator: () -> Unit,
+    zoomScale: Float = 1.0f,
+    panOffsetX: Float = 0f,
+    panOffsetY: Float = 0f,
+    onZoomChange: (scale: Float, panX: Float, panY: Float) -> Unit = { _, _, _ -> },
+    onResetZoom: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val coroutineScope = rememberCoroutineScope()
@@ -77,12 +87,17 @@ fun PlayerGestureSurface(
     val onStopFastForward2xUpdated by rememberUpdatedState(onStopFastForward2x)
     val onShowGestureIndicatorUpdated by rememberUpdatedState(onShowGestureIndicator)
     val onHideGestureIndicatorUpdated by rememberUpdatedState(onHideGestureIndicator)
+    val zoomScaleUpdated by rememberUpdatedState(zoomScale)
+    val panOffsetXUpdated by rememberUpdatedState(panOffsetX)
+    val panOffsetYUpdated by rememberUpdatedState(panOffsetY)
+    val onZoomChangeUpdated by rememberUpdatedState(onZoomChange)
+    val onResetZoomUpdated by rememberUpdatedState(onResetZoom)
 
     Box(
         modifier = modifier
             .fillMaxSize()
             .testTag("player_gesture_surface")
-            .pointerInput(isControlsLocked, playbackSpeed) {
+            .pointerInput(isControlsLocked, playbackSpeed, zoomScale) {
                 if (isControlsLocked) {
                     awaitEachGesture {
                         val down = awaitFirstDown(requireUnconsumed = false)
@@ -100,13 +115,20 @@ fun PlayerGestureSurface(
                         val down = awaitFirstDown(requireUnconsumed = false)
                         val startX = down.position.x
                         val startY = down.position.y
+                        var lastPointerX = startX
+                        var lastPointerY = startY
                         var currentY = startY
                         var hasDragged = false
+                        var isPanningZoom = false
+                        var isPinching = false
+                        var wasPinching = false
+                        var prevPinchDistance = 0f
+                        var prevCentroid = Offset(startX, startY)
                         val isLeft = startX < (size.width / 2f)
                         val isRightSide = startX >= (size.width / 2f)
                         val touchSlop = viewConfiguration.touchSlop
 
-                        // Brillo base exacto al iniciar la interacción táctil (evita regresiones o saltos bruscos)
+                        // Brillo base exacto al iniciar la interacción táctil
                         val winBrightness = activity?.window?.attributes?.screenBrightness ?: -1f
                         var gestureBrightness = if (winBrightness in 0.01f..1.0f) {
                             winBrightness
@@ -122,11 +144,12 @@ fun PlayerGestureSurface(
                         }
 
                         var isFastForwardActive = false
+                        val isCurrentlyZoomed = zoomScaleUpdated > 1.05f
 
-                        val fastForwardJob = if (isRightSide && !isControlsLocked) {
+                        val fastForwardJob = if (isRightSide && !isControlsLocked && !isCurrentlyZoomed) {
                             coroutineScope.launch {
                                 delay(400)
-                                if (!hasDragged) {
+                                if (!hasDragged && !isPinching && !wasPinching) {
                                     isFastForwardActive = true
                                     onStartFastForward2xUpdated()
                                     try {
@@ -139,99 +162,208 @@ fun PlayerGestureSurface(
                         try {
                             while (true) {
                                 val event = awaitPointerEvent()
-                                val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                                val pressedPointers = event.changes.filter { it.pressed }
+                                if (pressedPointers.isEmpty()) {
+                                    break
+                                }
 
-                                if (change.changedToUp()) {
+                                if (pressedPointers.size >= 2) {
+                                    // Interacción multitáctil: Pellizcar para Zoom continuo hasta x10
+                                    isPinching = true
+                                    wasPinching = true
                                     fastForwardJob?.cancel()
                                     if (isFastForwardActive) {
                                         isFastForwardActive = false
                                         onStopFastForward2xUpdated()
-                                        try {
-                                            view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                                        } catch (_: Throwable) {}
-                                    } else if (!hasDragged) {
-                                        val totalDx = abs(change.position.x - startX)
-                                        val totalDy = abs(change.position.y - startY)
-                                        if (totalDx < touchSlop && totalDy < touchSlop) {
-                                            val now = System.currentTimeMillis()
-                                            val isCenterTap = startX >= (size.width * 0.28f) && startX <= (size.width * 0.72f)
+                                    }
+                                    singleTapJob?.cancel()
+                                    singleTapJob = null
+                                    if (hasDragged && !isPanningZoom) {
+                                        hasDragged = false
+                                        gestureHideJob?.cancel()
+                                        onHideGestureIndicatorUpdated()
+                                    }
 
-                                            if (isCenterTap) {
-                                                singleTapJob?.cancel()
-                                                singleTapJob = null
-                                                lastTapTimeMs = 0L
-                                                onSingleTapUpdated()
-                                            } else {
-                                                if (now - lastTapTimeMs < 320 && lastTapIsLeft == isLeft) {
-                                                    singleTapJob?.cancel()
-                                                    singleTapJob = null
-                                                    lastTapTimeMs = 0L
+                                    val p1 = pressedPointers[0].position
+                                    val p2 = pressedPointers[1].position
+                                    val currentDist = hypot(p1.x - p2.x, p1.y - p2.y)
+                                    val currentCentroid = Offset((p1.x + p2.x) / 2f, (p1.y + p2.y) / 2f)
 
-                                                    onDoubleTapSeekUpdated(isLeft)
+                                    if (prevPinchDistance > 0f) {
+                                        val zoomRatio = currentDist / prevPinchDistance
+                                        val newScale = (zoomScaleUpdated * zoomRatio).coerceIn(1.0f, 10.0f)
+                                        val centroidDelta = currentCentroid - prevCentroid
 
-                                                    try {
-                                                        view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                                                    } catch (_: Throwable) {}
-                                                } else {
-                                                    lastTapTimeMs = now
-                                                    lastTapIsLeft = isLeft
+                                        val maxPanX = (size.width * (newScale - 1f)) / 2f
+                                        val maxPanY = (size.height * (newScale - 1f)) / 2f
 
-                                                    singleTapJob?.cancel()
-                                                    singleTapJob = coroutineScope.launch {
-                                                        delay(160)
-                                                        onSingleTapUpdated()
+                                        val newPanX = if (newScale <= 1.0f) 0f else (panOffsetXUpdated + centroidDelta.x).coerceIn(-maxPanX, maxPanX)
+                                        val newPanY = if (newScale <= 1.0f) 0f else (panOffsetYUpdated + centroidDelta.y).coerceIn(-maxPanY, maxPanY)
+
+                                        onZoomChangeUpdated(newScale, newPanX, newPanY)
+                                    }
+
+                                    prevPinchDistance = currentDist
+                                    prevCentroid = currentCentroid
+                                    event.changes.forEach { it.consume() }
+                                } else {
+                                    // Un solo dedo apoyado
+                                    val change = pressedPointers[0]
+                                    prevPinchDistance = 0f
+
+                                    if (change.changedToUp()) {
+                                        fastForwardJob?.cancel()
+                                        if (isFastForwardActive) {
+                                            isFastForwardActive = false
+                                            onStopFastForward2xUpdated()
+                                            try {
+                                                view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                                            } catch (_: Throwable) {}
+                                        } else if (wasPinching) {
+                                            // Si veníamos de un pellizco con dos dedos, no ejecutar tap ni ajustar volumen
+                                            change.consume()
+                                            break
+                                        } else if (!hasDragged) {
+                                            val totalDx = abs(change.position.x - startX)
+                                            val totalDy = abs(change.position.y - startY)
+                                            if (totalDx < touchSlop && totalDy < touchSlop) {
+                                                val now = System.currentTimeMillis()
+
+                                                if (zoomScaleUpdated > 1.05f) {
+                                                    // Con zoom activo, el doble toque restablece la vista a 1.0x
+                                                    if (now - lastTapTimeMs < 320) {
+                                                        singleTapJob?.cancel()
+                                                        singleTapJob = null
                                                         lastTapTimeMs = 0L
+                                                        onResetZoomUpdated()
+                                                        try {
+                                                            view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                                                        } catch (_: Throwable) {}
+                                                    } else {
+                                                        lastTapTimeMs = now
+                                                        singleTapJob?.cancel()
+                                                        singleTapJob = coroutineScope.launch {
+                                                            delay(180)
+                                                            onSingleTapUpdated()
+                                                            lastTapTimeMs = 0L
+                                                        }
+                                                    }
+                                                } else {
+                                                    val isCenterTap = startX >= (size.width * 0.28f) && startX <= (size.width * 0.72f)
+
+                                                    if (isCenterTap) {
+                                                        singleTapJob?.cancel()
+                                                        singleTapJob = null
+                                                        lastTapTimeMs = 0L
+                                                        onSingleTapUpdated()
+                                                    } else {
+                                                        if (now - lastTapTimeMs < 320 && lastTapIsLeft == isLeft) {
+                                                            singleTapJob?.cancel()
+                                                            singleTapJob = null
+                                                            lastTapTimeMs = 0L
+
+                                                            onDoubleTapSeekUpdated(isLeft)
+
+                                                            try {
+                                                                view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                                                            } catch (_: Throwable) {}
+                                                        } else {
+                                                            lastTapTimeMs = now
+                                                            lastTapIsLeft = isLeft
+
+                                                            singleTapJob?.cancel()
+                                                            singleTapJob = coroutineScope.launch {
+                                                                delay(160)
+                                                                onSingleTapUpdated()
+                                                                lastTapTimeMs = 0L
+                                                            }
+                                                        }
                                                     }
                                                 }
                                             }
+                                        } else {
+                                            if (!isPanningZoom) {
+                                                gestureHideJob?.cancel()
+                                                gestureHideJob = coroutineScope.launch {
+                                                    delay(1000)
+                                                    onHideGestureIndicatorUpdated()
+                                                }
+                                            }
                                         }
-                                    } else {
-                                        gestureHideJob?.cancel()
-                                        gestureHideJob = coroutineScope.launch {
-                                            delay(1000)
-                                            onHideGestureIndicatorUpdated()
-                                        }
-                                    }
-                                    change.consume()
-                                    break
-                                }
-
-                                val totalDx = abs(change.position.x - startX)
-                                val totalDy = abs(change.position.y - startY)
-                                val dragAmountY = change.position.y - currentY
-
-                                if (!hasDragged) {
-                                    if (totalDy > touchSlop && totalDy > totalDx && !isFastForwardActive) {
-                                        fastForwardJob?.cancel()
-                                        hasDragged = true
                                         change.consume()
-                                        gestureHideJob?.cancel()
-                                        onShowGestureIndicatorUpdated(if (isLeft) GestureIndicatorType.BRIGHTNESS else GestureIndicatorType.VOLUME)
-                                        currentY = change.position.y
+                                        break
                                     }
-                                } else {
-                                    change.consume()
-                                    // Sensibilidad de arrastre: deslizamiento hacia arriba suma, hacia abajo resta
-                                    val delta = -dragAmountY / (size.height.toFloat().coerceAtLeast(1f) * 0.45f)
-                                    if (isLeft) {
-                                        // Acumulación progresiva sobre la variable local: elimina el rebote o caída de brillo
-                                        gestureBrightness = (gestureBrightness + delta).coerceIn(0.01f, 1f)
-                                        onBrightnessChangeUpdated(gestureBrightness)
-                                        val window = activity?.window
-                                        if (window != null) {
-                                            val lp = window.attributes
-                                            lp.screenBrightness = gestureBrightness
-                                            window.attributes = lp
+
+                                    val totalDx = abs(change.position.x - startX)
+                                    val totalDy = abs(change.position.y - startY)
+
+                                    if (wasPinching) {
+                                        change.consume()
+                                        lastPointerX = change.position.x
+                                        lastPointerY = change.position.y
+                                        continue
+                                    }
+
+                                    if (zoomScaleUpdated > 1.05f) {
+                                        // Con zoom activo, el arrastre de un dedo desplaza el marco del video
+                                        if (!hasDragged) {
+                                            if (totalDx > touchSlop || totalDy > touchSlop) {
+                                                hasDragged = true
+                                                isPanningZoom = true
+                                                fastForwardJob?.cancel()
+                                                lastPointerX = change.position.x
+                                                lastPointerY = change.position.y
+                                                change.consume()
+                                            }
+                                        } else if (isPanningZoom) {
+                                            val dx = change.position.x - lastPointerX
+                                            val dy = change.position.y - lastPointerY
+                                            val maxPanX = (size.width * (zoomScaleUpdated - 1f)) / 2f
+                                            val maxPanY = (size.height * (zoomScaleUpdated - 1f)) / 2f
+
+                                            val newPanX = (panOffsetXUpdated + dx).coerceIn(-maxPanX, maxPanX)
+                                            val newPanY = (panOffsetYUpdated + dy).coerceIn(-maxPanY, maxPanY)
+
+                                            onZoomChangeUpdated(zoomScaleUpdated, newPanX, newPanY)
+                                            lastPointerX = change.position.x
+                                            lastPointerY = change.position.y
+                                            change.consume()
                                         }
                                     } else {
-                                        gestureVolumeFraction = (gestureVolumeFraction + delta).coerceIn(0f, 1f)
-                                        val targetVol = (gestureVolumeFraction * maxVolumeUpdated).roundToInt().coerceIn(0, maxVolumeUpdated)
-                                        if (targetVol != currentVolumeUpdated) {
-                                            onVolumeChangeUpdated(targetVol)
-                                            audioManager?.setStreamVolume(AudioManager.STREAM_MUSIC, targetVol, 0)
+                                        // Modo estándar (escala 1.0x): Brillo en lado izquierdo, volumen en lado derecho
+                                        val dragAmountY = change.position.y - currentY
+                                        if (!hasDragged) {
+                                            if (totalDy > touchSlop && totalDy > totalDx && !isFastForwardActive) {
+                                                fastForwardJob?.cancel()
+                                                hasDragged = true
+                                                change.consume()
+                                                gestureHideJob?.cancel()
+                                                onShowGestureIndicatorUpdated(if (isLeft) GestureIndicatorType.BRIGHTNESS else GestureIndicatorType.VOLUME)
+                                                currentY = change.position.y
+                                            }
+                                        } else {
+                                            change.consume()
+                                            val delta = -dragAmountY / (size.height.toFloat().coerceAtLeast(1f) * 0.45f)
+                                            if (isLeft) {
+                                                gestureBrightness = (gestureBrightness + delta).coerceIn(0.01f, 1f)
+                                                onBrightnessChangeUpdated(gestureBrightness)
+                                                val window = activity?.window
+                                                if (window != null) {
+                                                    val lp = window.attributes
+                                                    lp.screenBrightness = gestureBrightness
+                                                    window.attributes = lp
+                                                }
+                                            } else {
+                                                gestureVolumeFraction = (gestureVolumeFraction + delta).coerceIn(0f, 1f)
+                                                val targetVol = (gestureVolumeFraction * maxVolumeUpdated).roundToInt().coerceIn(0, maxVolumeUpdated)
+                                                if (targetVol != currentVolumeUpdated) {
+                                                    onVolumeChangeUpdated(targetVol)
+                                                    audioManager?.setStreamVolume(AudioManager.STREAM_MUSIC, targetVol, 0)
+                                                }
+                                            }
+                                            currentY = change.position.y
                                         }
                                     }
-                                    currentY = change.position.y
                                 }
                             }
                         } finally {
@@ -246,3 +378,4 @@ fun PlayerGestureSurface(
             }
     )
 }
+

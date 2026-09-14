@@ -1,17 +1,11 @@
 /**
  * VulkanVideoEngine.h - Motor nativo de renderizado gráfico Vulkan 1.1+ para Nova Video Player
  *
- * Propósito:
- * Implementa el pipeline gráfico de bajo nivel mediante la API Vulkan para procesar
- * y presentar tramas de video con consumo mínimo de CPU y sin sobrecalentar el terminal.
- *
- * Características clave:
- * 1. Conexión de Video en Memoria Compartida (Zero-Copy con AHardwareBuffer):
- *    Importa tramas decodificadas por hardware directamente en memoria GPU mediante
- *    VK_ANDROID_external_memory_android_hardware_buffer y sampler YCbCr (Vulkan 1.1).
- * 2. Carga y ejecución de sombreadores en bytecode binario SPIR-V (VulkanSpirvShaders.h).
- * 3. Gestión de ciclo de vida con ANativeWindow (SurfaceView en Android).
- * 4. Manejo de errores detallado y compatibilidad con el Sistema de Fallback Automático.
+ * Arquitectura modular desacoplada:
+ * - [VulkanDeviceContext]: Gestión de VkInstance, VkSurfaceKHR, VkPhysicalDevice y VkDevice.
+ * - [VulkanSwapchainManager]: Creación y redimensionamiento dinámico de VkSwapchainKHR, Views y Framebuffers.
+ * - [VulkanPipelineManager]: Módulos SPIR-V Vertex/Fragment y VkPipeline.
+ * - [VulkanVideoEngine]: Orquestador de sincronización, colas de comandos y renderizado Zero-Copy.
  *
  * Licencia: Apache 2.0 (Permisiva).
  * Soporta arquitecturas de 32 bits (armeabi-v7a, x86) y 64 bits (arm64-v8a, x86_64).
@@ -29,32 +23,33 @@
 #include <mutex>
 #include <memory>
 
+#include "VulkanDeviceContext.h"
+#include "VulkanSwapchainManager.h"
+#include "VulkanPipelineManager.h"
+
 class VulkanVideoEngine {
 public:
     VulkanVideoEngine();
     ~VulkanVideoEngine();
 
     /**
-     * Inicializa la instancia, el dispositivo lógico y la superficie Vulkan conectada a ANativeWindow.
-     * Si el hardware o los controladores no cumplen los requisitos, retorna false y guarda el motivo
-     * en getLastError() para que la capa de UI ejecute la Degradación Elegante a OpenGL ES.
+     * Inicializa el dispositivo, Swapchain y pipeline gráfico en ANativeWindow.
+     * Retorna false si el hardware no soporta Vulkan, habilitando el fallback a OpenGL ES.
      */
     bool init(ANativeWindow* window, int width, int height);
 
     /**
-     * Reconfigura el Swapchain y el viewport al rotar la pantalla o alterar la relación de aspecto.
+     * Reconfigura el Swapchain ante rotaciones de pantalla o cambios de relación de aspecto.
      */
     bool resize(int width, int height);
 
     /**
-     * Importa un búfer de hardware AHardwareBuffer como textura Vulkan (Zero-Copy)
-     * mediante la extensión VK_ANDROID_external_memory_android_hardware_buffer.
+     * Importa tramas de video en memoria compartida (Zero-Copy) mediante AHardwareBuffer.
      */
     bool importHardwareBuffer(AHardwareBuffer* hardwareBuffer);
 
     /**
-     * Ejecuta una pasada de renderizado aplicando los parámetros visuales
-     * (brillo, contraste, saturación, gamma, nitidez, luz azul, modo sol).
+     * Ejecuta una pasada de renderizado aplicando los parámetros visuales.
      */
     bool renderFrame(
         float brightness,
@@ -67,81 +62,49 @@ public:
     );
 
     /**
-     * Libera todos los recursos Vulkan asignados (Swapchain, Pipeline, Device, Instance).
+     * Libera todos los recursos Vulkan asignados de forma ordenada.
      */
     void release();
 
     /**
-     * Devuelve true si el motor se encuentra listo para renderizar.
+     * Informa si el motor está inicializado y listo para renderizar.
      */
     bool isInitialized() const;
 
     /**
-     * Devuelve el último mensaje de error registrado en caso de fallo de inicialización o renderizado.
+     * Devuelve el último mensaje de error registrado.
      */
     std::string getLastError() const;
 
     /**
-     * Informa si el hardware actual soporta la extensión VK_ANDROID_external_memory_android_hardware_buffer.
+     * Informa si el hardware soporta la extensión VK_ANDROID_external_memory_android_hardware_buffer.
      */
     bool isHardwareBufferExtensionSupported() const;
 
 private:
-    bool createInstance();
-    bool selectPhysicalDevice();
-    bool createLogicalDevice();
-    bool createSurface(ANativeWindow* window);
-    bool createSwapchain(int width, int height);
-    bool createRenderPass();
-    bool createPipeline();
-    bool createFramebuffers();
     bool createCommandPoolAndBuffers();
     bool createSyncObjects();
-
-    void cleanupSwapchain();
 
     mutable std::mutex mMutex;
     bool mInitialized;
     std::string mLastError;
-    bool mSupportsHardwareBufferExt;
 
     int mWidth;
     int mHeight;
-
     ANativeWindow* mNativeWindow;
 
-    // Componentes principales de Vulkan
-    VkInstance mInstance;
-    VkPhysicalDevice mPhysicalDevice;
-    VkDevice mDevice;
-    VkQueue mGraphicsQueue;
-    uint32_t mGraphicsQueueFamilyIndex;
+    // Submódulos modulares
+    VulkanDeviceContext mContext;
+    VulkanSwapchainManager mSwapchainMgr;
+    VulkanPipelineManager mPipelineMgr;
 
-    VkSurfaceKHR mSurface;
-    VkSwapchainKHR mSwapchain;
-    VkFormat mSwapchainFormat;
-    VkExtent2D mSwapchainExtent;
-
-    std::vector<VkImage> mSwapchainImages;
-    std::vector<VkImageView> mSwapchainImageViews;
-    std::vector<VkFramebuffer> mSwapchainFramebuffers;
-
-    VkRenderPass mRenderPass;
-    VkPipelineLayout mPipelineLayout;
-    VkPipeline mGraphicsPipeline;
-
-    VkShaderModule mVertexShaderModule;
-    VkShaderModule mFragmentShaderModule;
-
+    // Objetos de comandos y sincronización
     VkCommandPool mCommandPool;
     std::vector<VkCommandBuffer> mCommandBuffers;
 
     VkSemaphore mImageAvailableSemaphore;
     VkSemaphore mRenderFinishedSemaphore;
     VkFence mInFlightFence;
-
-    // Punteros a extensiones nativas de AHardwareBuffer
-    PFN_vkGetAndroidHardwareBufferPropertiesANDROID fpGetAndroidHardwareBufferPropertiesANDROID;
 };
 
 #endif // NOVA_VULKAN_VIDEO_ENGINE_H

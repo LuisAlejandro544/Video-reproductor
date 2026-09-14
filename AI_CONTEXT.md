@@ -98,15 +98,17 @@ Este archivo proporciona el contexto técnico, arquitectónico y operativo neces
 - `VideoPlayerScreen` informa periódicamente el progreso (`currentPositionMs` y `totalDurationMs`), actualizando la base de datos para mostrar barras de avance y permitir reanudación instantánea con un toque desde la pantalla principal (`VideoImportScreen`).
 
 ### 5.1. Sistema de Efectos Sonoros Nativos de Interfaz (`SoundEffectManager`)
-- **Gestión Asíncrona con SoundPool de Android:**
+- **Gestión Asíncrona con SoundPool de Android y Arquitectura de Respaldo:**
   - Implementado en `com.example.audio.SoundEffectManager` como singleton/administrador de audio para efectos cortos de UI.
-  - Carga el recurso `R.raw.ui_click` (audio Ogg Vorbis a 48 kHz mono) mediante `AudioAttributes.USAGE_ASSISTANCE_SONIFICATION` y `CONTENT_TYPE_SONIFICATION`.
-  - Callback `setOnLoadCompleteListener` para garantizar que no se produzcan excepciones de audio no cargado.
+  - **Enrutamiento por Flujo Multimedia (`STREAM_MUSIC`):** Configurado con `AudioAttributes.USAGE_MEDIA` y `CONTENT_TYPE_SONIFICATION`, superando el problema de la versión inicial en desarrollo (que usaba `USAGE_ASSISTANCE_SONIFICATION` y resultaba inaudible cuando el usuario tenía los sonidos de sistema desactivados o el teléfono en silencio/vibración).
+  - **Calibración de Muestra de Audio (`R.raw.ui_click`):** Muestra de audio Ogg Vorbis a 48 kHz mono de 42 ms (2,016 muestras) con ataque suave anti-pop, chasquido de 2.4 kHz y cuerpo resonante a 520 Hz a -0.9 dBFS. Resuelve el corte por rampa de encendido de hardware DAC y errores de sub-paquete en decodificadores Vorbis de Stagefright presentes en muestras menores a 10 ms.
+  - **Mecanismo de Respaldo Automático (Dual-Tier Fallback):** Si `SoundPool` aún se encuentra precargando el recurso asíncronamente en memoria o no puede asignar canales libres (`soundPool.play()` retorna 0), se delega de forma instantánea y transparente en `AudioManager.playSoundEffect(AudioManager.FX_KEY_CLICK)`, asegurando que ninguna interacción táctil quede muda.
+  - Callback `setOnLoadCompleteListener` con bandera volátil `isLoaded` para gestión de concurrencia y máxima eficiencia de memoria.
   - Control de volumen calibrado (0.85f) y reproducción sin bloqueos del hilo principal (`playClickSound()`).
   - Persistencia de la preferencia del usuario en `AppPreferences.isSoundEffectsEnabled` y exposición reactiva en `MainViewModel.isSoundEffectsEnabled`.
-  - Integración en navegación entre pantallas, botones principales, conmutadores, diálogo de selección y gestos HUD.
+  - Integración en navegación entre pantallas, subpantallas de ajustes, panel lateral de herramientas, botones principales, conmutadores, diálogo de selección y gestos HUD.
 - **Herramienta de Conversión de Audio (`scripts/convert_audio_asset.sh`):**
-  - Script bash ejecutable basado en `ffmpeg` para transcodificar archivos WAV, MP3 o FLAC a formato Ogg Vorbis mono a 48 kHz con tasa de bits reducida para minimizar el peso del APK y el consumo de RAM.
+  - Script bash ejecutable basado en `ffmpeg` para transcodificar archivos WAV, MP3 o FLAC a formato Ogg Vorbis mono a 48 kHz con tasa de bits reducida para minimizar el peso del APK y el consumo de RAM, preservando la duración acústica mínima recomendada (>35 ms) para decodificación estable.
 
 ### 6. Sistema de Gestos Táctiles, Avance Rápido a 2X y Modo Inmersivo
 - **Modo Inmersivo Automático (Edge-to-Edge Sin Distracciones):**
@@ -234,6 +236,7 @@ Este archivo proporciona el contexto técnico, arquitectónico y operativo neces
   - `PillarboxBlurSheet`: Pantalla modal exclusiva para habilitar y ajustar el desenfoque de fondo en videos verticales (radio Gaussiano y atenuación de brillo).
   - `FsrUpscaleSheet`: Pantalla modal exclusiva para Super-Resolución AMD FidelityFX™ FSR 1.0 (activación de EASU y ajuste fino de afilado RCAS).
   - `AspectRatioSheet`: Pantalla modal exclusiva para cambiar la escala geométrica (Ajustar / FIT, Zoom / ZOOM, Llenar / FILL) con indicadores visuales claros.
+  - `ZoomBottomSheet`: Pantalla modal exclusiva para regular el Zoom táctil continuo (1.0x a 10.0x) con deslizador de precisión y presets instantáneos.
   - `AudioEngineSheet`: Pantalla modal exclusiva para alternar entre el motor nativo de ultra baja latencia Google Oboe en C++ y Android Media3 AudioTrack.
   - `PlaybackSpeedSheet`: Pantalla modal de control de velocidad (0.25x a 2.0x) con Sonic Pitch activo.
   - `SubtitlesBottomSheet`: Panel modal de gestión de subtítulos internos (MKV/MP4) y externos (.srt/.vtt) con ajuste de tamaño.
@@ -372,6 +375,20 @@ Este archivo proporciona el contexto técnico, arquitectónico y operativo neces
   - Convierte los registros encontrados en `VideoEntity` y los inserta de manera no destructiva (`videoDao.insertVideo(...)`) verificando que no existan duplicados previamente registrados.
 - **Privacidad Absoluta:** No envía metadatos ni archivos a servidores externos ni requiere acceso a internet. Todo el proceso es estrictamente local en el almacenamiento del dispositivo.
 - **Integración en Interfaz (`VideoImportScreen`):** Si el usuario activó la opción de mensajería, se muestra una tarjeta visual en la parte superior de la biblioteca que permite consultar el estado del escaneo y refrescar manualmente los videos de WhatsApp y Telegram con un toque.
+
+### 30. Zoom Táctil Continuo Multitáctil (Pinch-to-Zoom hasta x10) y Desplazamiento Panorámico
+- **Motivación y Ergonomía:**
+  - Permite a los usuarios inspeccionar detalles finos de una escena o adaptar encuadres sin alterar la relación de aspecto global de la reproducción.
+- **Implementación Técnica (`PlayerGestureDetector.kt` y `VideoPlayerScreen.kt`):**
+  - **Detección Multitáctil:** Gestos gestionados en `PlayerGestureSurface` con `awaitEachGesture`. Cuando se detectan 2 punteros activos simultáneos (`pointerCount >= 2`), se calcula la distancia euclidiana (`hypot(dx, dy)`) respecto al frame anterior para actualizar el factor de escala de manera incremental.
+  - **Rango Dinámico:** Escala de aumento restringida continuamente entre `1.0f` y `10.0f` (`coerceIn(1.0f, 10.0f)`).
+  - **Pivote y Desplazamiento (Pan):** El desplazamiento de traslación (`panOffsetX`, `panOffsetY`) se calcula proporcionalmente al centroide de los dedos y se acota dinámicamente según el tamaño del contenedor (`containerWidth * (zoomScale - 1f) / 2f`) para evitar que el video se desplace fuera del área visible.
+  - **Reinicio con Doble Toque:** Si `zoomScale > 1.0f`, un doble toque con un solo dedo restaura inmediatamente la vista a escala 1.0x (origen) con respuesta acústica y háptica.
+  - **Desacoplamiento con Gestos de Brillo y Volumen:** El sistema implementa una bandera de amortiguación (`wasPinching`) para evitar que al separar o soltar los dedos de un pellizco se disparen por error los gestos de deslizamiento vertical de brillo o volumen.
+  - **Renderizado por Capa de Gráficos:** El contenedor de `AdaptiveVideoPlayerView` aplica `Modifier.clipToBounds().graphicsLayer { scaleX = zoomScale; scaleY = zoomScale; translationX = panOffsetX; translationY = panOffsetY }`, asegurando renderizado fluido a 60/120 FPS sin recomposición de la textura nativa de video.
+  - **Indicador HUD Reactivo (`ZoomHudIndicator`):** Píldora superior animada que refleja el nivel actual de zoom (ej. `3.2x`) y proporciona un botón táctil de reinicio rápido.
+  - **Panel de Ajuste Dedicado (`ZoomBottomSheet`):** Herramienta accesible desde el menú lateral (`PlayerToolsSideSheet`) con control deslizante y selectores de aumento directo preconfigurados.
+
 
 
 

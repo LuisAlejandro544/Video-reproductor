@@ -45,8 +45,18 @@ Este documento detalla la organización de carpetas, responsabilidades de cada m
 │       │   │   ├── OboeAudioEngine.cpp # Implementación nativa con búfer de anillo estático, vaciado atómico instantáneo y filtros DSP
 │       │   │   ├── VideoColorEngine.h # Declaración del motor de sombreadores OpenGL ES (incluye uniforms y texturas FBO)
 │       │   │   ├── VideoColorEngine.cpp # Motor modular de procesamiento visual en GPU (GLES 2.0 / 3.0)
-│       │   │   └── shaders/          # Catálogo modular de código sombreador en GPU
-│       │   │       └── VideoShaders.h # GLSL Shaders centralizados: OES, Color/Nitidez, Pillarbox Blur, AMD FSR 1.0 (EASU+RCAS) y Anime4K
+│       │   │   ├── shaders/          # Catálogo modular de código sombreador en GPU
+│       │   │   │   └── VideoShaders.h # GLSL Shaders centralizados: OES, Color/Nitidez, Pillarbox Blur, AMD FSR 1.0 (EASU+RCAS) y Anime4K
+│       │   │   └── vulkan/           # Motor nativo modular de Vulkan 1.1+ (Zero-Copy AHardwareBuffer)
+│       │   │       ├── VulkanSpirvShaders.h   # Shaders SPIR-V binarios compilados (Vertex + Fragment passthrough)
+│       │   │       ├── VulkanDeviceContext.h  # Submódulo nativo: Gestión de VkInstance, VkSurfaceKHR, dispositivo físico y lógico
+│       │   │       ├── VulkanDeviceContext.cpp # Implementación modular del contexto de dispositivo y colas Vulkan
+│       │   │       ├── VulkanSwapchainManager.h # Submódulo nativo: Gestión de la cadena de intercambio, imágenes y RenderPass
+│       │   │       ├── VulkanSwapchainManager.cpp # Implementación modular del ciclo de vida de Swapchain y Framebuffers
+│       │   │       ├── VulkanPipelineManager.h # Submódulo nativo: Creación de Shaders SPIR-V, Pipeline Layout y Graphics Pipeline
+│       │   │       ├── VulkanPipelineManager.cpp # Implementación modular de pipelines de renderizado
+│       │   │       ├── VulkanVideoEngine.h    # Fachada orquestadora del motor de renderizado Vulkan
+│       │   │       └── VulkanVideoEngine.cpp  # Orquestador modular de Vulkan: sincronización, render loop y presentación Zero-Copy
 │       │   │
 │       │   ├── java/com/example/     # Código fuente Kotlin (UI y Lógica)
 │       │   │   ├── MainActivity.kt   # Actividad raíz, orquestador de UI y transiciones cinemáticas AnimatedContent
@@ -56,7 +66,7 @@ Este documento detalla la organización de carpetas, responsabilidades de cada m
 │       │   │   │   ├── AudioEngineType.kt     # Enum: OBOE vs MEDIA3
 │       │   │   │   ├── OboeAudioEngine.kt     # Wrapper JNI con flush(), control de volumen y DSP nativo C++
 │       │   │   │   ├── OboeAudioProcessor.kt  # Procesador de audio universal Media3/Oboe con soporte DSP en tiempo real (Voces Claras, DRC, Mono, Haas 3D)
-│       │   │   │   └── SoundEffectManager.kt  # Gestor de efectos sonoros nativos (SoundPool) para retroalimentación táctil de interfaz
+│       │   │   │   └── SoundEffectManager.kt  # Gestor de efectos sonoros de interfaz: SoundPool multimedia (STREAM_MUSIC) a 48 kHz con degradación elegante a AudioManager
 │       │   │   │
 │       │   │   ├── opengl/           # Capa de renderizado acelerado por GPU
 │       │   │   │   ├── NativeVideoFilter.kt   # Puente JNI con VideoColorEngine en C++
@@ -106,6 +116,7 @@ Este documento detalla la organización de carpetas, responsabilidades de cada m
 │       │   │   │   ├── VideoPlayerScreen.kt   # Coordinador modular de reproducción con ExoPlayer y OpenGL
 │       │   │   │   ├── VideoSourceDialog.kt   # Diálogo para alternar Galería / Gestor de archivos
 │       │   │   │   ├── VoiceNightAudioSheet.kt # Pantalla interactiva de Audio Inteligente DSP (Voces Claras y DRC para Oboe C++ y Media3)
+│       │   │   │   ├── ZoomBottomSheet.kt     # Pantalla exclusiva e independiente de Zoom táctil y presets (hasta x10)
 │       │   │   │   │
 │       │   │   │   ├── onboarding/       # Asistente guiado de configuración inicial (Onboarding)
 │       │   │   │   │   ├── AudioEngineSelectionStep.kt    # Paso 2: Selección Oboe vs Media3 con pros y contras
@@ -126,22 +137,30 @@ Este documento detalla la organización de carpetas, responsabilidades de cada m
 │       │   │   │   │   └── VideoHistoryCard.kt   # Tarjeta de elemento de video con progreso y acciones directas
 │       │   │   │   │
 │       │   │   │   ├── player/           # Módulos desacoplados del reproductor de video
-│       │   │   │   │   ├── PlayerGestureDetector.kt # Detección de gestos (brillo, volumen, avance 2X, doble toque ±5s)
-│       │   │   │   │   ├── PlayerHudIndicators.kt   # Indicadores visuales flotantes dinámicos con animaciones spring y auras neón (HUD ±5s, 2X pill pulsante, medidor brillo/volumen)
+│       │   │   │   │   ├── BottomControlsBar.kt     # Barra inferior modular: progreso con scrubbing, tiempos, mute y selector de velocidad
+│       │   │   │   │   ├── CenterPlaybackControls.kt # Controles centrales modulares: botones grandes de rebobinado -10s, play/pause y adelanto +10s
+│       │   │   │   │   ├── PlayerGestureDetector.kt # Detección de gestos multitáctiles (zoom continuo hasta x10, pan, brillo, volumen, avance 2X, doble toque ±5s y reset)
+│       │   │   │   │   ├── PlayerHudIndicators.kt   # Componentes visuales de indicadores HUD dinámicos (Pills flotantes, iconos neón, barras de volumen/brillo)
+│       │   │   │   │   ├── PlayerHudOverlay.kt      # Capa modular de orquestación HUD (desbloqueo, buffering, zoom x10, feedback de sonido, gestos)
 │       │   │   │   │   ├── PlayerOrientationHandler.kt # Detección por sensor de hardware (OrientationEventListener)
-│       │   │   │   │   └── PlayerOverlayControls.kt # Barras superior e inferior y controles de reproducción centrales
+│       │   │   │   │   ├── PlayerOverlayControls.kt # Fachada modular que compone las barras superior, central e inferior con bloqueo y auto-hide
+│       │   │   │   │   ├── PlayerSheetHost.kt       # Contenedor modular y fachada desacoplada para todas las hojas modales y paneles contextuales
+│       │   │   │   │   ├── PlayerSubtitleLayer.kt   # Capa modular desacoplada de renderizado de subtítulos (SSA/ASS con Rust y SRT/VTT con SubtitleView)
+│       │   │   │   │   └── TopControlsBar.kt        # Barra superior modular: navegación atrás, título con marquesina, aspect ratio y acceso a herramientas
 │       │   │   │   │
-│       │   │   │   ├── settings/         # Subpantallas independientes de ajustes (Hub-and-Spoke)
+│       │   │   │   ├── settings/         # Subpantallas y componentes independientes de ajustes (Hub-and-Spoke)
 │       │   │   │   │   ├── AboutSubScreen.kt        # Licencias permisivas, arquitectura 32/64 bits y distribución APK
-│       │   │   │   │   ├── AppearanceSubScreen.kt   # Pantalla exclusiva e independiente de Apariencia, selector de tema y Material You
+│       │   │   │   │   ├── AppearanceSubScreen.kt   # Pantalla orquestadora modular de Apariencia y tema
 │       │   │   │   │   ├── AudioChannelsSubScreen.kt # Configuración de enrutamiento estéreo, mono centrado y efecto Haas 3D
 │       │   │   │   │   ├── AudioEngineSubScreen.kt  # Configuración detallada de motores (Oboe vs Media3)
 │       │   │   │   │   ├── AudioTestManager.kt      # Gestor de sintetizador senoidal de 440 Hz PCM
 │       │   │   │   │   ├── AudioTestSubScreen.kt     # Pantalla de prueba acústica de salida física
 │       │   │   │   │   ├── FormatsSubScreen.kt       # Pantalla de formatos multimedia y códecs soportados (video, audio, subtítulos)
+│       │   │   │   │   ├── LiveThemePreviewCard.kt  # Componente modular de previsualización dinámica del tema seleccionado
 │       │   │   │   │   ├── SettingsHubView.kt       # Menú principal con tarjetas categorizadas (Hub)
 │       │   │   │   │   ├── SettingsSubScreen.kt     # Enums y rutas de subpantallas de ajustes
-│       │   │   │   │   └── TelemetrySubScreen.kt     # Diagnóstico en vivo de tramas C++, buffers y perfil de memoria
+│       │   │   │   │   ├── TelemetrySubScreen.kt     # Diagnóstico en vivo de tramas C++, buffers y perfil de memoria
+│       │   │   │   │   └── ThemeModeCard.kt         # Componente modular de selección de modo de tema (Sistema, Claro, Oscuro) con chips de accesibilidad
 │       │   │   │   │
 │       │   │   │   └── theme/            # Paleta de colores, tipografía, Material You y temas
 │       │   │   │       ├── AppThemeMode.kt          # Enum de modos de tema (SYSTEM, LIGHT, DARK)
@@ -156,7 +175,7 @@ Este documento detalla la organización de carpetas, responsabilidades de cada m
 │       │   │
 │       │   └── res/                  # Recursos de la aplicación (strings, drawables, audio raw)
 │       │       ├── raw/
-│       │       │   └── ui_click.ogg  # Muestra de sonido optimizada en Ogg Vorbis mono a 48 kHz para clics de UI
+│       │       │   └── ui_click.ogg  # Muestra de audio Ogg Vorbis mono calibrada a 48 kHz (42 ms, 2.4 kHz snap + 520 Hz cuerpo) para clics de interfaz
 │       │       └── values/
 │       │           └── strings.xml   # Textos traducibles y nombre de la app
 │       │
@@ -245,7 +264,17 @@ Este documento detalla la organización de carpetas, responsabilidades de cada m
 13. **Desarrollo Modular y Desacoplamiento de UI & Shaders C++:**
     - **Capa C++ / GLSL:** Extracción de todos los sombreadores GLSL en `shaders/VideoShaders.h`, dejando `VideoColorEngine.cpp` enfocado estrictamente en la gestión de programas de sombreado, compilación de shaders, enlace de uniforms y orquestación de renderizado FBO en dos fases.
     - **Biblioteca (`com.example.ui.library`):** Fragmentación de `VideoImportScreen.kt` en componentes reutilizables con responsabilidades claras: cabecera (`LibraryHeaders.kt`), tarjeta de importación rápida (`ImportQuickCard.kt`), tarjeta de historial de video con mini-progreso (`VideoHistoryCard.kt`), diálogos de borrado seguro (`LibraryDialogs.kt`) y tarjetas de pie (`LibraryFooterCards.kt`).
-    - **Configuración (`com.example.ui.settings`):** Descomposición de `SettingsScreen.kt` en subpantallas modulares desacopladas que reducen la carga cognitiva y permiten extender ajustes de audio, video o almacenamiento sin alterar el coordinador.
-    - **Reproductor (`com.example.ui.player`):** Descomposición de `VideoPlayerScreen.kt` en controladores especializados: gestos táctiles concurrentes (`PlayerGestureDetector.kt`), indicadores HUD no intrusivos (`PlayerHudIndicators.kt`), rotación reactiva por sensor de hardware (`PlayerOrientationHandler.kt`) y controles táctiles superpuestos en pantalla completa (`PlayerOverlayControls.kt`).
+    - **Configuración (`com.example.ui.settings`):** Descomposición de `SettingsScreen.kt` en subpantallas modulares desacopladas que reducen la carga cognitiva y permiten extender ajustes de audio, video o almacenamiento sin alterar el coordinador. En particular, `AppearanceSubScreen.kt` se modularizó extrayendo la tarjeta de modo de tema (`ThemeModeCard.kt`) con chips accesibles y la tarjeta de previsualización en vivo (`LiveThemePreviewCard.kt`).
+    - **Reproductor (`com.example.ui.player`):** Descomposición de `VideoPlayerScreen.kt` y sus controles:
+        * `PlayerOverlayControls.kt`: Descompuesto en barra superior (`TopControlsBar.kt`), controles centrales cinemáticos (`CenterPlaybackControls.kt`) y barra inferior con scrubber y velocidad (`BottomControlsBar.kt`).
+        * `PlayerHudOverlay.kt`: Capa visual dedicada para buffering, bloqueo, auras de volumen/brillo, HUD de velocidad 2X y zoom dinámico hasta x10.
+        * `PlayerSubtitleLayer.kt`: Capa especializada que unifica el renderizado avanzado SSA/ASS parseado por Rust con el renderizado estándar SRT/VTT de SubtitleView.
+        * `PlayerSheetHost.kt`: Fachada orquestadora para alojar y presentar todas las hojas modales del reproductor (ecualizador, FSR, Anime4K, Modo Sol, velocidad, audio y zoom).
+        * `VideoPlayerScreen.kt`: Coordinador orquestador limpio y conciso que delega la presentación a sus capas modulares.
 14. **Personalización Material You y Sistema de Temas (`AppThemeMode`):** Soporte nativo para extracción de colores dinámicos del sistema en Android 12+ (`dynamicDarkColorScheme`, `dynamicLightColorScheme`), con conmutación en caliente entre Modo Oscuro, Claro y del Sistema, persistencia reactiva en `AppPreferences` y blindaje tipográfico estricto (`fontScale = 1.0f`).
-15. **Infraestructura y Detección de Capacidades Vulkan 1.1+ (Fase 6):** Implementación del módulo `VulkanCapabilities.kt` y puente JNI `nativeQueryVulkanDriver` en C++. Realiza una doble verificación en tiempo de ejecución: consulta `FEATURE_VULKAN_HARDWARE_VERSION` (requiriendo versión >= 1.1 `0x401000`) y `FEATURE_VULKAN_HARDWARE_LEVEL` a nivel de Android, y ejecuta una consulta nativa directa al loader de Vulkan y a la GPU física (`vkEnumerateInstanceVersion` y `vkGetPhysicalDeviceProperties`). Asimismo, `CMakeLists.txt` enlaza la biblioteca del sistema `libvulkan.so` en todas las arquitecturas soportadas (32 bits y 64 bits), preparando la base para la migración del pipeline gráfico a Vulkan con `VK_ANDROID_external_memory_android_hardware_buffer` manteniendo degradación elegante (*graceful fallback*) hacia OpenGL ES.
+15. **Arquitectura Modular Nativa de Vulkan 1.1+ (Fase 6 & 7):** Implementación modular de `VulkanVideoEngine` en C++ dividida en responsabilidades unificadas:
+    - `VulkanDeviceContext`: Creación de instancia Vulkan, selección de GPU física, colas gráficas y lógicas, y extensiones AHardwareBuffer.
+    - `VulkanSwapchainManager`: Ciclo de vida completo del Swapchain sobre ANativeWindow, adquisición de imágenes, creación de ImageViews y RenderPass.
+    - `VulkanPipelineManager`: Compilación/carga de Shaders SPIR-V binarios (`VulkanSpirvShaders.h`), layouts de descriptores y creación del Graphics Pipeline.
+    - `VulkanVideoEngine`: Fachada orquestadora para inicialización, renderizado por cuadro con sincronización de semáforos/fences y presentación Zero-Copy.
+    - Validación dual en runtime (`VulkanCapabilities.kt` y JNI nativo) con degradación transparente hacia OpenGL ES en dispositivos incompatibles.

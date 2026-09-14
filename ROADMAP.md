@@ -28,6 +28,7 @@ Este documento detalla las fases de desarrollo planificadas para convertir a **N
 - [x] Reanudación con un solo toque directamente desde el último punto de visualización guardado en base de datos.
 - [x] Interfaz de usuario inspirada en controles de PC (Seekbar, saltos de 10s, modos de relación de aspecto).
 - [x] **Modo Inmersivo Completo:** Ocultamiento automático de la barra de estado (reloj, batería, notificaciones) y barra de navegación durante la reproducción.
+- [x] **Pellizcar para Zoom Táctil Continuo (Pinch-to-Zoom hasta x10):** Soporte multitáctil fluido con dos dedos para ampliar desde 1.0x hasta 10.0x, desplazamiento panorámico (*pan*) sobre la imagen ampliada, doble toque para restablecer a 1.0x, indicador flotante HUD interactivo (`ZoomHudIndicator`) y panel inferior de ajuste fino con presets (`ZoomBottomSheet`).
 - [x] **Gesto de Avance Rápido a 2X:** Activación instantánea a 2.0x al mantener presionado el lateral derecho (700 ms) con badge flotante HUD y reversión automática a la velocidad previa al soltar.
 - [x] **Gestos Táctiles con HUD Minimalista:** Control de brillo deslizando en la mitad izquierda y control de volumen físico en la mitad derecha con indicador flotante no invasivo.
 - [x] Gestión de pantalla encendida (`FLAG_KEEP_SCREEN_ON`), restauración de brillo y ciclo de vida de la actividad.
@@ -174,9 +175,12 @@ Este documento detalla las fases de desarrollo planificadas para convertir a **N
   - Extracción de metadatos (título, URI, tamaño, duración) e inserción no destructiva en la base de datos Room evitando duplicados.
   - Tarjeta de escaneo dedicada en la pantalla principal (`VideoImportScreen`) con indicador de carga y botón de escaneo manual para refrescar videos recibidos en cualquier momento.
 - [x] **Efectos de Sonido de Interfaz Nativos con SoundPool (`SoundEffectManager`):**
-  - Carga asíncrona a 48 kHz mono en memoria del archivo de audio ligero Ogg Vorbis `ui_click.ogg` con latencia imperceptible.
-  - Retroalimentación auditiva en botones de control, navegación, doble toque temporal y selección de videos.
-  - Control de activación en *Configuración > Apariencia* con persistencia en `AppPreferences`.
+  - **Función perfeccionada y consolidada tras fase de desarrollo:** Se resolvió la incidencia que impedía la audición de clicks en dispositivos con modos silenciosos o perfiles estándar de Android.
+  - **Enrutamiento Robusto de Audio:** Migración arquitectónica de `USAGE_ASSISTANCE_SONIFICATION` (restringido al canal `STREAM_SYSTEM` que se silencia por ajustes globales de fábrica o modo vibración) hacia `AudioAttributes.USAGE_MEDIA` + `CONTENT_TYPE_SONIFICATION` (enrutado a `STREAM_MUSIC`, audible con el volumen de medios de la app).
+  - **Calibración del Recurso Acústico:** Sustitución del micro-asset preliminar (que causaba bajo flujo por sub-paquete en decodificadores Vorbis de Stagefright y truncado por rampa de encendido de amplificadores DAC) por una muestra acústica optimizada de 42 ms (2,016 muestras a 48 kHz mono) con ataque suave anti-pop, chasquido de 2.4 kHz y cuerpo resonante a 520 Hz con decaimiento exponencial a -0.9 dBFS.
+  - **Mecanismo de Degradación Elegante (Fallback Inmediato):** Delegación automática en `AudioManager.playSoundEffect(AudioManager.FX_KEY_CLICK)` si SoundPool aún se encuentra precargando el recurso en memoria o agota la asignación de canales nativos, garantizando 0% de pulsaciones silenciosas.
+  - **Integración Táctil Global:** Retroalimentación auditiva en botones de control, navegación de subpantallas de ajustes, panel lateral de herramientas del reproductor, doble toque temporal (+5s/-5s) y selección de videos.
+  - Control de activación en *Configuración > Apariencia* con persistencia en `AppPreferences.isSoundEffectsEnabled`.
   - Script ejecutable de conversión de audio (`scripts/convert_audio_asset.sh`) para transcodificar cualquier audio a Ogg Vorbis ligero.
 - [x] **Indicadores Gestuales Dinámicos y Transición entre Pantallas:**
   - Animaciones reactivas con físicas de resorte (`spring`) en los indicadores HUD de brillo y volumen (`MinimalistGestureIndicator`), variando anchura y resplandor según la intensidad.

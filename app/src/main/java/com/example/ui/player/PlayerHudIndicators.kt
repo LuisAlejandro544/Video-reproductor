@@ -40,6 +40,7 @@ import androidx.compose.material.icons.filled.VolumeDown
 import androidx.compose.material.icons.filled.VolumeMute
 import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.filled.ZoomIn
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -495,6 +496,135 @@ fun SoundStatusHudBanner(
                         fontSize = 11.sp
                     )
                 )
+            }
+        }
+    }
+}
+
+/**
+ * Indicador visual flotante HUD para el nivel de Zoom táctil (Pinch-to-Zoom hasta x10).
+ *
+ * Muestra:
+ * - Nivel de escala actual con 1 decimal (ej: "2.5x", "10.0x").
+ * - Icono de lupa con acento de color cian o rojo dinámico si llega al tope (10.0x).
+ * - Mini barra de progreso relativa al rango de ampliación permitido.
+ * - Botón interactivo "1.0x" para restablecer la vista inmediatamente con un solo toque.
+ */
+@Composable
+fun ZoomHudIndicator(
+    zoomScale: Float,
+    onResetZoom: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val displayScale = (zoomScale * 10).roundToInt() / 10f
+    val isZoomed = zoomScale > 1.05f
+    val percentage = ((zoomScale - 1f) / 9f * 100).roundToInt().coerceIn(0, 100)
+
+    Surface(
+        shape = RoundedCornerShape(24.dp),
+        color = Color(0xFF0F172A).copy(alpha = 0.92f),
+        border = BorderStroke(
+            1.5.dp,
+            if (zoomScale >= 9.9f) Color(0xFFEF4444).copy(alpha = 0.85f) else Color(0xFF38BDF8).copy(alpha = 0.80f)
+        ),
+        shadowElevation = 12.dp,
+        modifier = modifier.testTag("player_zoom_hud_indicator")
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Default.ZoomIn,
+                contentDescription = "Zoom táctil",
+                tint = if (zoomScale >= 9.9f) Color(0xFFF87171) else Color(0xFF38BDF8),
+                modifier = Modifier.size(22.dp)
+            )
+
+            Column {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Text(
+                        text = "Zoom",
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            color = Color(0xFF94A3B8),
+                            fontWeight = FontWeight.Medium
+                        )
+                    )
+                    Text(
+                        text = "${String.format(java.util.Locale.US, "%.1f", displayScale)}x",
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
+                    )
+                    if (zoomScale >= 9.9f) {
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = Color(0xFFDC2626).copy(alpha = 0.35f),
+                            border = BorderStroke(0.5.dp, Color(0xFFEF4444))
+                        ) {
+                            Text(
+                                text = "MÁX",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontSize = 9.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = Color(0xFFFCA5A5)
+                                ),
+                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                            )
+                        }
+                    }
+                }
+
+                // Mini barra de progreso del zoom (1.0x a 10.0x)
+                Box(
+                    modifier = Modifier
+                        .width(86.dp)
+                        .height(4.dp)
+                        .clip(RoundedCornerShape(2.dp))
+                        .background(Color.White.copy(alpha = 0.2f))
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxHeight()
+                            .fillMaxWidth((percentage / 100f).coerceIn(0.04f, 1f))
+                            .background(
+                                Brush.horizontalGradient(
+                                    colors = if (zoomScale >= 9.9f) {
+                                        listOf(Color(0xFFF87171), Color(0xFFEF4444))
+                                    } else {
+                                        listOf(Color(0xFF38BDF8), Color(0xFF0284C7))
+                                    }
+                                ),
+                                shape = RoundedCornerShape(2.dp)
+                            )
+                    )
+                }
+            }
+
+            if (isZoomed) {
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = Color.White.copy(alpha = 0.12f),
+                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.25f)),
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(12.dp))
+                        .clickable(onClick = onResetZoom)
+                        .testTag("player_zoom_reset_button")
+                ) {
+                    Text(
+                        text = "1.0x",
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold
+                        ),
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                    )
+                }
             }
         }
     }
